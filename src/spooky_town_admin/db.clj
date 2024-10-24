@@ -23,9 +23,14 @@
 
 ;; Create 함수
 (defn add-comic [comic]
-  (let [id (:next-id @db-state)]
-    (swap! db-state (fn [state]
-                      (-> state
-                          (update :comics assoc id (assoc comic :id id))
-                          (update :next-id inc))))
-    id))
+  (try 
+    (let [id (:next-id @db-state)]
+      (swap! db-state (fn [state]
+                        (-> state
+                            (update :comics assoc id (assoc comic :id id))
+                            (update :next-id inc))))
+      {:success true :id id})
+    (catch Exception e
+      {:success false 
+       :error "만화 정보 저장 실패"
+       :details (.getMessage e)})))
