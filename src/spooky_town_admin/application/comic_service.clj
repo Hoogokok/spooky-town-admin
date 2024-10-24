@@ -4,67 +4,66 @@
             [spooky-town-admin.infrastructure.persistence :as persistence]
             [spooky-town-admin.infrastructure.image-storage :as image-storage]))
 
-;; 서비스 상태 (의존성 주입을 위한)
 (defrecord ComicService [comic-repository image-storage])
 
-;; 이미지 처리 헬퍼 함수
+;; 이미지 처리 관련 함수들
+(defn- extract-and-validate-metadata [image-data]
+  (let [{:keys [success metadata]} (image-storage/extract-image-metadata image-data)]
+    (if success
+      (workflow/validate-image-constraints metadata)
+      (workflow/failure (errors/validation-error :cover-image 
+                                               (errors/get-image-error-message :invalid))))))
+
+(defn- store-image [image-storage image-data metadata]
+  (let [{:keys [success image-id]} (image-storage/store-image image-storage image-data)]
+    (if success
+      (workflow/success {:image-id image-id :metadata metadata})
+      (workflow/failure (errors/validation-error :cover-image 
+                                               (errors/get-image-error-message :invalid))))))
+
 (defn- process-cover-image [image-storage image-data]
   (when image-data
-    (let [metadata-result (image-storage/extract-image-metadata image-data)]
-      (println "Metadata result:" metadata-result)  ;; 디버깅용
-      (if (:success metadata-result)
-        (let [constraints-result (workflow/validate-image-constraints (:metadata metadata-result))]
-          (println "Constraints result:" constraints-result)  ;; 디버깅용
-          (if (workflow/success? constraints-result)
-            (let [store-result (image-storage/store-image image-storage image-data)]
-              (println "Store result:" store-result)  ;; 디버깅용
-              (if (:success store-result)
-                {:success true
-                 :image-id (:image-id store-result)
-                 :metadata (:value constraints-result)}  ;; Success 레코드에서 값 추출
-                {:success false
-                 :error (errors/validation-error :cover-image 
-                                              (errors/get-image-error-message :invalid))}))
-            {:success false 
-             :error (:error constraints-result)}))  ;; Failure 레코드에서 에러 추출
-        {:success false 
-         :error (errors/validation-error :cover-image 
-                                       (errors/get-image-error-message :invalid))}))))
+    (let [metadata-result (extract-and-validate-metadata image-data)]
+      (if (workflow/success? metadata-result)
+        (store-image image-storage image-data (:value metadata-result))
+        metadata-result))))
+
+;; 만화 생성 관련 함수들
+(defn- check-duplicate-isbn [comic-repository comic-data]
+  (if-let [existing-comic (persistence/find-comic-by-isbn 
+                          comic-repository 
+                          (or (:isbn13 comic-data) (:isbn10 comic-data)))]
+    (workflow/failure (errors/business-error :duplicate-isbn 
+                                           (errors/get-business-message :duplicate-isbn)))
+    (workflow/success comic-data)))
+
+(defn- create-comic-with-image [comic-repository image-storage comic-data image]
+  (let [image-result (process-cover-image image-storage image)]
+    (if (workflow/success? image-result)
+      (let [comic-with-image (assoc comic-data 
+                                   :cover-image (:image-id (:value image-result))
+                                   :cover-image-metadata (:metadata (:value image-result)))
+            workflow-result (workflow/create-comic-workflow comic-with-image)]
+        (if (workflow/success? workflow-result)
+          (persistence/save-comic comic-repository (:value workflow-result))
+          workflow-result))
+      image-result)))
+
+(defn- create-comic-without-image [comic-repository comic-data]
+  (let [workflow-result (workflow/create-comic-workflow comic-data)]
+    (if (workflow/success? workflow-result)
+      (persistence/save-comic comic-repository (:value workflow-result))
+      workflow-result)))
 
 ;; 만화 생성 서비스
 (defn create-comic [{:keys [comic-repository image-storage]} comic-data]
   (persistence/with-transaction
-    (let [;; ISBN 중복 체크
-          existing-comic (persistence/find-comic-by-isbn 
-                         comic-repository 
-                         (or (:isbn13 comic-data) (:isbn10 comic-data)))]
-      
-      (if existing-comic
-        {:success false
-         :error (errors/business-error :duplicate-isbn 
-                                     (errors/get-business-message :duplicate-isbn))}
-        
-        ;; 이미지 처리 및 만화 생성
+    (let [duplicate-check (check-duplicate-isbn comic-repository comic-data)]
+      (if (workflow/success? duplicate-check)
         (if-let [image (:cover-image comic-data)]
-          ;; 이미지가 있는 경우
-          (let [image-result (process-cover-image image-storage image)]
-            (if (:success image-result)
-              ;; 이미지 처리 성공
-              (let [comic-with-image (assoc comic-data 
-                                          :cover-image (:image-id image-result)
-                                          :cover-image-metadata (:metadata image-result))
-                    workflow-result (workflow/create-comic-workflow comic-with-image)]
-                (if (workflow/success? workflow-result)
-                  (persistence/save-comic comic-repository (:value workflow-result))
-                  {:success false :error (:error workflow-result)}))
-              ;; 이미지 처리 실패
-              image-result))
-          
-          ;; 이미지가 없는 경우
-          (let [workflow-result (workflow/create-comic-workflow comic-data)]
-            (if (workflow/success? workflow-result)
-              (persistence/save-comic comic-repository (:value workflow-result))
-              {:success false :error (:error workflow-result)})))))))
+          (create-comic-with-image comic-repository image-storage comic-data image)
+          (create-comic-without-image comic-repository comic-data))
+        duplicate-check))))
 
 ;; 만화 조회 서비스
 (defn get-comic [{:keys [comic-repository]} id]
