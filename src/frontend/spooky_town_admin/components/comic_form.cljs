@@ -78,10 +78,12 @@
           [:div.form-group
            [:label "ISBN-13"]
            [:input {:type "text"
-                   :value (:isbn13 @form-data)
-                   :required true
-                   :pattern "^(?:978|979)-\\d-\\d{2,7}-\\d{1,7}-\\d$"
-                   :on-change #(handle-input-change % :isbn13)}]]
+          :value (:isbn13 @form-data)
+          :required true
+          :pattern "^(?:978|979)\\d{10}$"
+          :placeholder "예: 9780596520687"
+          :title "ISBN-13 형식: 978/979로 시작하는 13자리 숫자"
+          :on-change #(handle-input-change % :isbn13)}]]
           
           [:div.form-group
            [:label "ISBN-10"]
