@@ -44,8 +44,8 @@
   {:title "테스트 만화"
    :artist "테스트 작가"
    :author "테스트 글작가"
-   :isbn13 "978-1-23456-789-0"
-   :isbn10 "1-23456-789-0"
+   :isbn13 "9780306406157"
+   :isbn10 "0-321-14653-0"
    :publisher "테스트 출판사"
    :price 15000})
 
@@ -65,8 +65,8 @@
       (let [test-image (create-test-image 800 1200)
             _ (println "Test image created:" (.exists test-image))
             comic-with-image (assoc test-comic-data 
-                                  :isbn13 "978-1-23456-789-2"  ;; 다른 ISBN 사용
-                                  :isbn10 "1-23456-789-2"
+                                  :isbn13 "9780132350884"  
+                                  :isbn10 "0-321-14653-0"
                                   :cover-image test-image)
             result (service/create-comic service comic-with-image)]
         (println "Metadata result:" (image-storage/extract-image-metadata test-image))
@@ -88,7 +88,7 @@
       (let [invalid-image (File/createTempFile "invalid" ".jpg")
             _ (spit invalid-image "이것은 이미지가 아닙니다")
             comic-with-invalid-image (assoc test-comic-data 
-                                          :isbn13 "978-1-23456-789-3"  ;; 다른 ISBN 사용
+                                          :isbn13 "9781234567893"  ;; 다른 ISBN 사용
                                           :isbn10 "1-23456-789-3"
                                           :cover-image invalid-image)
             result (service/create-comic service comic-with-invalid-image)]
@@ -113,11 +113,14 @@
   (let [service (service/create-comic-service :test {})]
     
     (testing "만화 목록 조회"
+      ;; 첫 번째 만화 생성
       (service/create-comic service test-comic-data)
-      (service/create-comic service (assoc test-comic-data 
-                                         :title "테스트 만화 2"
-                                         :isbn13 "978-1-23456-789-1"
-                                         :isbn10 "1-23456-789-1"))
+      ;; 두 번째 만화 생성 (다른 ISBN 사용)
+      (service/create-comic service 
+        (assoc test-comic-data 
+               :title "테스트 만화 2"
+               :isbn13 "9780132350884"  ;; Clean Code의 ISBN-13
+               :isbn10 "0-132-35088-4"))  ;; Clean Code의 ISBN-10
       (let [result (service/list-comics service)]
         (is (:success result))
         (is (= 2 (count (:comics result))))
