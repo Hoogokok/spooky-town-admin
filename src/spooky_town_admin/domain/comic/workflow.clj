@@ -16,25 +16,27 @@
 (defn success? [result]
   (instance? Success result))
 
-;; 이미지 검증 워크플로우
+;; 이미지 제약조건 검증
 (defn validate-image-constraints [image]
-  (let [constraints [{:check #(contains? #{"image/jpeg" "image/png"} (:content-type %))
+  (let [constraints [{:check #(contains? types/allowed-image-types (:content-type %))
                       :error-type :type}
-                     {:check #(and (<= (:width %) 1000) (<= (:height %) 1500))
+                     {:check #(and (<= (:width %) types/max-dimension)
+                                 (<= (:height %) types/max-dimension))
                       :error-type :dimensions}
-                     {:check #(<= (* (:width %) (:height %)) 100000000)
+                     {:check #(<= (* (:width %) (:height %)) types/max-area)
                       :error-type :area}
-                     {:check #(<= (:size %) (* 10 1024 1024))
+                     {:check #(<= (:size %) types/max-file-size)
                       :error-type :size}]]
     (if-let [failed-constraint (first (filter #(not ((:check %) image)) constraints))]
       (failure (errors/validation-error :cover-image 
                                       (errors/get-image-error-message (:error-type failed-constraint))))
-      (success image))))
+      (success (types/create-image-metadata image)))))
 
 ;; 만화 생성 워크플로우
 (defn create-comic-workflow [{:keys [title artist author isbn13 isbn10 
                                     publication-date publisher price 
-                                    page-count description cover-image] :as comic-data}]
+                                    page-count description cover-image 
+                                    cover-image-metadata] :as comic-data}]
   (let [;; 필수 필드 검증
         required-fields {:title title
                         :artist artist
@@ -48,7 +50,9 @@
                          publisher (assoc :publisher publisher)
                          price (assoc :price price)
                          page-count (assoc :page-count page-count)
-                         description (assoc :description description))]
+                         description (assoc :description description)
+                         cover-image (assoc :cover-image cover-image)
+                         cover-image-metadata (assoc :cover-image-metadata cover-image-metadata))]
     
     ;; 필수 필드가 모두 존재하는지 검증
     (if-not (every? some? (vals required-fields))
@@ -60,13 +64,14 @@
         (if-not (s/valid? ::types/isbn10 isbn10)
           (failure (errors/validation-error :isbn10 (errors/get-validation-message :isbn10)))
           
-          ;; 이미지 검증 (있는 경우에만)
-          (if cover-image
-            (let [image-result (validate-image-constraints cover-image)]
-              (if (success? image-result)
+          ;; 이미지 메타데이터 검증 (있는 경우에만)
+          (if cover-image-metadata
+            (let [metadata-result (validate-image-constraints cover-image-metadata)]
+              (if (success? metadata-result)
                 (success (types/create-comic required-fields 
-                                           (assoc optional-fields :cover-image (:value image-result))))
-                image-result))
+                                           (assoc optional-fields 
+                                                  :cover-image-metadata (:value metadata-result))))
+                metadata-result))
             
             ;; 이미지가 없는 경우
             (success (types/create-comic required-fields optional-fields))))))))
