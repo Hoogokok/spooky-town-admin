@@ -7,7 +7,8 @@
                  [reagent "1.1.1"]
                  [re-frame "1.2.0"]
                  [compojure "1.6.2"]
-                 [ring "1.9.5"]]
+                 [ring "1.9.5"]
+                 [ring/ring-jetty-adapter "1.9.5"]]
   :main ^:skip-aot spooky-town-admin.core
   :target-path "target/%s"
   :profiles {:uberjar {:aot :all
