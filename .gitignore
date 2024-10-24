@@ -17,5 +17,15 @@ pom.xml.asc
 .calva/
 .clj-kondo/
 .lsp/
-node_modules/
+
+# ClojureScript 빌드 결과물
+resources/public/js/
 .shadow-cljs/
+
+# 기타 IDE/편집기 설정
+.vscode/
+
+# NPM/PNPM 관련
+node_modules/
+.pnpm-store/
+pnpm-lock.yaml
