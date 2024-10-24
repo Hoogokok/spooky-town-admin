@@ -65,24 +65,29 @@
 (defn read-buffered-image [^File file]
   (ImageIO/read file))
 
+(defn get-image-info [file]
+  (let [image (read-buffered-image file)
+        width (.getWidth image)
+        height (.getHeight image)]
+    {:image image
+     :width width
+     :height height
+     :content-type (probe-content-type (.toPath file))}))
+
 (defn validate-image-type [file]
-  (let [content-type (probe-content-type (.toPath file))]
+  (let [{:keys [content-type]} (get-image-info file)]
     (if (contains? #{"image/jpeg" "image/png"} content-type)
       (success file)
       (failure {"표지 이미지" "JPEG 또는 PNG 형식의 이미지만 허용됩니다."}))))
 
 (defn validate-image-dimensions [file]
-  (let [image (read-buffered-image file)
-        width (.getWidth image)
-        height (.getHeight image)]
+  (let [{:keys [width height]} (get-image-info file)]
     (if (and (<= width 1000) (<= height 1500))
       (success file)
       (failure {"표지 이미지" "이미지 크기는 1000x1500 픽셀을 초과할 수 없습니다."}))))
 
 (defn validate-image-area [file]
-  (let [img (read-buffered-image file)
-        width (.getWidth img)
-        height (.getHeight img)
+  (let [{:keys [width height]} (get-image-info file)
         area (* width height)]
     (if (<= area 100000000)  ; 100 메가 픽셀
       (success area)
