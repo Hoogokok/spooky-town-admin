@@ -7,26 +7,6 @@
            [javax.imageio ImageIO]
            [java.awt.image BufferedImage]))
 
-(defn success [value]
-  {:success true :value value})
-
-(defn failure [error]
-  {:success false :error error})
-
-(defn success? [result]
-  (:success result))
-
-(defn validate-length [field-name min max]
-  (fn [v]
-    (if (and (string? v) (<= min (count v) max))
-      (success v)
-      (failure {field-name (str field-name "의 길이는 " min "에서 " max " 사이여야 합니다.")}))))
-
-(def validate-title (validate-length "제목" 1 100))
-(def validate-artist (validate-length "그림 작가" 1 20))
-(def validate-author (validate-length "글 작가" 1 20))
-(def validate-publisher (validate-length "출판사" 1 50))
-
 (def error-messages
   {:title "제목의 길이는 1에서 100 사이여야 합니다."
    :artist "그림 작가의 길이는 1에서 20 사이여야 합니다."
@@ -42,7 +22,28 @@
    :cover-image-dimensions "이미지 크기는 1000x1500 픽셀을 초과할 수 없습니다."
    :cover-image-area "이미지 영역이 100 메가 픽셀을 초과합니다."
    :cover-image-size "파일 크기가 10MB를 초과합니다."
-   :cover-image-missing "파일이 존재하지 않습니다."})
+   :cover-image-missing "파일이 존재하지 않습니다."
+   :cover-image "표지 이미지가 유효하지 않습니다."})
+
+(defn success [value]
+  {:success true :value value})
+
+(defn failure [error]
+  {:success false :error error})
+
+(defn success? [result]
+  (:success result))
+
+(defn validate-length [field-name min max]
+  (fn [v]
+    (if (and (string? v) (<= min (count v) max))
+      (success v)
+      (failure {field-name (error-messages (keyword field-name))}))))
+
+(def validate-title (validate-length "제목" 1 100))
+(def validate-artist (validate-length "그림 작가" 1 20))
+(def validate-author (validate-length "글 작가" 1 20))
+(def validate-publisher (validate-length "출판사" 1 50))
 
 (defn validate-isbn-13 [isbn]
   (if (and (string? isbn)
