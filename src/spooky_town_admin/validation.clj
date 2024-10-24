@@ -36,46 +36,45 @@
 
 (defn validate-length [field-name min max]
   (fn [v]
-    (if (and (string? v) (<= min (count v) max))
+    (if (and (string? v) (not= v "") (<= min (count v) max))
       (success v)
       (failure {field-name (error-messages (keyword field-name))}))))
 
-(def validate-title (validate-length "제목" 1 100))
-(def validate-artist (validate-length "그림 작가" 1 20))
-(def validate-author (validate-length "글 작가" 1 20))
-(def validate-publisher (validate-length "출판사" 1 50))
+(def validate-title (validate-length :title 1 100))
+(def validate-artist (validate-length :artist 1 20))
+(def validate-author (validate-length :author 1 20))
+(def validate-publisher (validate-length :publisher 1 50))
+(def validate-description (validate-length :description 0 1000))
 
 (defn validate-isbn-13 [isbn]
   (if (and (string? isbn)
            (re-matches #"^(?:978|979)-\d-\d{2,7}-\d{1,7}-\d$" isbn))
     (success isbn)
-    (failure {"ISBN-13" (error-messages :isbn-13)})))
+    (failure {:isbn-13 (error-messages :isbn-13)})))
 
 (defn validate-isbn-10 [isbn]
   (if (and (string? isbn)
            (re-matches #"^\d{1,5}-\d{1,7}-\d{1,6}-[\dX]$" isbn))
     (success isbn)
-    (failure {"ISBN-10" (error-messages :isbn-10)})))
+    (failure {:isbn-10 (error-messages :isbn-10)})))
 
 (defn validate-publication-date [date]
   (if (and (string? date)
            (re-matches #"^\d{4}-\d{2}-\d{2}$" date))
     (success date)
-    (failure {"출판일" (error-messages :publication-date)})))
+    (failure {:publication-date (error-messages :publication-date)})))
 
 (defn validate-price [price]
   (if (and (number? price) (>= price 0))
     (success price)
-    (failure {"가격" (error-messages :price)})))
+    (failure {:price (error-messages :price)})))
 
 (defn validate-pages [pages]
   (if (and (integer? pages) (> pages 0))
     (success pages)
-    (failure {"쪽수" (error-messages :pages)})))
+    (failure {:pages (error-messages :pages)})))
 
-(def validate-description (validate-length "설명" 0 1000))
-
-(def allowed-image-types #{"image/png" "image/gif" "image/jpeg" "image/webp" "image/svg+xml"})
+(def allowed-image-types #{"image/jpeg" "image/png"})
 
 (defn probe-content-type [^Path path]
   (Files/probeContentType path))
@@ -93,56 +92,48 @@
      :content-type (probe-content-type (.toPath file))}))
 
 (defn validate-image-type [file]
-  (let [{:keys [content-type]} (get-image-info file)]
-    (if (contains? #{"image/jpeg" "image/png"} content-type)
+  (let [content-type (probe-content-type (.toPath file))]
+    (if (contains? allowed-image-types content-type)
       (success file)
-      (failure {"표지 이미지" (error-messages :cover-image-type)}))))
+      (failure {:cover-image (error-messages :cover-image-type)}))))
 
 (defn validate-image-dimensions [file]
   (let [{:keys [width height]} (get-image-info file)]
     (if (and (<= width 1000) (<= height 1500))
       (success file)
-      (failure {"표지 이미지" (error-messages :cover-image-dimensions)}))))
+      (failure {:cover-image (error-messages :cover-image-dimensions)}))))
 
 (defn validate-image-area [file]
   (let [{:keys [width height]} (get-image-info file)
         area (* width height)]
     (if (<= area 100000000)  ; 100 메가 픽셀
       (success area)
-      (failure {"표지 이미지" (error-messages :cover-image-area)}))))
+      (failure {:cover-image (error-messages :cover-image-area)}))))
 
 (defn validate-file-size [file]
   (let [size (.length (io/file file))]
     (if (<= size (* 10 1024 1024))  ; 10MB
       (success size)
-      (failure {"표지 이미지" (error-messages :cover-image-size)}))))
+      (failure {:cover-image (error-messages :cover-image-size)}))))
 
 (defn validate-cover-image [file]
   (if (and file (.exists (io/file file)))
-    (let [type-result (validate-image-type file)
-          dimensions-result (validate-image-dimensions file)
-          area-result (validate-image-area file)
-          size-result (validate-file-size file)
-          all-results [type-result dimensions-result area-result size-result]
-          errors (reduce (fn [acc result]
-                           (if (success? result)
-                             acc
-                             (merge acc (:error result))))
-                         {}
-                         all-results)]
+    (let [validations [validate-image-type
+                       validate-image-dimensions
+                       validate-image-area
+                       validate-file-size]
+          results (map #(% file) validations)
+          errors (keep #(when-not (success? %) (:error %)) results)]
       (if (empty? errors)
         (success file)
-        (failure errors)))
-    (failure {"표지 이미지" (error-messages :cover-image-missing)})))
+        (failure (first errors))))
+    (failure {:cover-image (error-messages :cover-image-missing)})))
 
 (defn validate-optional-field [field-name validator]
   (fn [value]
     (if (nil? value)
       (success nil)
-      (let [result (validator value)]
-        (if (success? result)
-          result
-          (failure {field-name (get (:error result) field-name)}))))))
+      (validator value))))
 
 (defn validate-comic [comic]
   (let [validations [[:title validate-title]
@@ -150,24 +141,19 @@
                      [:author validate-author]
                      [:isbn-13 validate-isbn-13]
                      [:isbn-10 validate-isbn-10]
-                     [:publisher (validate-optional-field "출판사" validate-publisher)]
-                     [:publication-date (validate-optional-field "출판일" validate-publication-date)]
-                     [:price (validate-optional-field "가격" validate-price)]
-                     [:pages (validate-optional-field "쪽수" validate-pages)]
-                     [:description (validate-optional-field "설명" validate-description)]
-                     [:cover-image (validate-optional-field "표지 이미지" validate-cover-image)]]
+                     [:publisher (validate-optional-field :publisher validate-publisher)]
+                     [:publication-date (validate-optional-field :publication-date validate-publication-date)]
+                     [:price (validate-optional-field :price validate-price)]
+                     [:pages (validate-optional-field :pages validate-pages)]
+                     [:description (validate-optional-field :description validate-description)]
+                     [:cover-image (validate-optional-field :cover-image validate-cover-image)]]
         results (map (fn [[field validator]]
-                       (validator (get comic field)))
+                       [field (validator (get comic field))])
                      validations)
-        errors (reduce (fn [acc result]
-                         (if (success? result)
-                           acc
-                           (merge acc (:error result))))
-                       {}
-                       results)]
+        errors (into {} (keep (fn [[field result]]
+                                (when-not (success? result)
+                                  [field (get-in result [:error field])]))  ;; 중첩된 에러 메시지에서 실제 메시지만 추출
+                              results))]
     (if (empty? errors)
-      (success (reduce (fn [acc [field _]]
-                         (assoc acc field (get-in (nth results (.indexOf (map first validations) field)) [:value])))
-                       comic
-                       validations))
+      (success (into {} (map (fn [[field result]] [field (:value result)]) results)))
       (failure errors))))
