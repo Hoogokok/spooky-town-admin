@@ -3,10 +3,10 @@
             [spooky-town-admin.domain.comic.errors :as errors]
             [clojure.spec.alpha :as s]))
 
-;; 인메모리 데이터베이스 상태
+;; 인메모리 데이터베이스 상태 - 단순화
 (def db-state (atom {:comics {} :next-id 1}))
 
-;; 저장소 프로토콜 정의
+;; 저장소 프로토콜 정의 - 이미지 메타데이터 관련 메서드 제거
 (defprotocol ComicRepository
   (save-comic [this comic])
   (find-comic-by-id [this id])
@@ -20,7 +20,10 @@
   (save-comic [_ comic]
     (try 
       (let [id (:next-id @db-state)
-            comic-with-id (assoc comic :id id)]
+            ;; cover-image-metadata는 저장하지 않고 cover-image-id만 저장
+            comic-with-id (-> comic
+                            (dissoc :cover-image-metadata)
+                            (assoc :id id))]
         (swap! db-state (fn [state]
                          (-> state
                              (update :comics assoc id comic-with-id)
