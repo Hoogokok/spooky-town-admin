@@ -1,5 +1,11 @@
 (ns spooky-town-admin.validation
-  (:require [clojure.string :as str]))
+  (:require [clojure.spec.alpha :as s]
+            [clojure.string :as str]
+            [clojure.java.io :as io])
+  (:import [java.io File]
+           [java.nio.file Path Files]
+           [javax.imageio ImageIO]
+           [java.awt.image BufferedImage]))
 
 (defn success [value]
   {:success true :value value})
@@ -51,11 +57,69 @@
 
 (def validate-description (validate-length "설명" 0 1000))
 
+(def allowed-image-types #{"image/png" "image/gif" "image/jpeg" "image/webp" "image/svg+xml"})
+
+(defn probe-content-type [^Path path]
+  (Files/probeContentType path))
+
+(defn read-buffered-image [^File file]
+  (ImageIO/read file))
+
+(defn validate-image-type [file]
+  (let [content-type (probe-content-type (.toPath file))]
+    (if (contains? #{"image/jpeg" "image/png"} content-type)
+      (success file)
+      (failure {"표지 이미지" "JPEG 또는 PNG 형식의 이미지만 허용됩니다."}))))
+
+(defn validate-image-dimensions [file]
+  (let [image (read-buffered-image file)
+        width (.getWidth image)
+        height (.getHeight image)]
+    (if (and (<= width 1000) (<= height 1500))
+      (success file)
+      (failure {"표지 이미지" "이미지 크기는 1000x1500 픽셀을 초과할 수 없습니다."}))))
+
+(defn validate-image-area [file]
+  (let [img (read-buffered-image file)
+        width (.getWidth img)
+        height (.getHeight img)
+        area (* width height)]
+    (if (<= area 100000000)  ; 100 메가 픽셀
+      (success area)
+      (failure {"표지 이미지" "이미지 영역이 100 메가 픽셀을 초과합니다."}))))
+
+(defn validate-file-size [file]
+  (let [size (.length (io/file file))]
+    (if (<= size (* 10 1024 1024))  ; 10MB
+      (success size)
+      (failure {"표지 이미지" "파일 크기가 10MB를 초과합니다."}))))
+
+(defn validate-cover-image [file]
+  (if (and file (.exists (io/file file)))
+    (let [type-result (validate-image-type file)
+          dimensions-result (validate-image-dimensions file)
+          area-result (validate-image-area file)
+          size-result (validate-file-size file)
+          all-results [type-result dimensions-result area-result size-result]
+          errors (reduce (fn [acc result]
+                           (if (success? result)
+                             acc
+                             (merge acc (:error result))))
+                         {}
+                         all-results)]
+      (if (empty? errors)
+        (success file)
+        (failure errors)))
+    (failure {"표지 이미지" "파일이 존재하지 않습니다."})))
+
 (defn validate-optional-field [field-name validator]
   (fn [value]
     (if (nil? value)
       (success nil)
-      (validator value))))
+      (let [result (validator value)]
+        (if (success? result)
+          result
+          (failure {field-name (get (:error result) field-name)}))))))
 
 (defn validate-comic [comic]
   (let [title-result (validate-title (:title comic))
@@ -68,8 +132,10 @@
         price-result ((validate-optional-field "가격" validate-price) (:price comic))
         pages-result ((validate-optional-field "쪽수" validate-pages) (:pages comic))
         description-result ((validate-optional-field "설명" validate-description) (:description comic))
+        cover-image-result ((validate-optional-field "표지 이미지" validate-cover-image) (:cover-image comic))
         all-results [title-result artist-result author-result isbn-13-result isbn-10-result
-                     publisher-result publication-date-result price-result pages-result description-result]
+                     publisher-result publication-date-result price-result pages-result description-result
+                     cover-image-result]
         errors (reduce (fn [acc result]
                          (if (success? result)
                            acc
@@ -87,5 +153,6 @@
                    (assoc :publication-date (:value publication-date-result))
                    (assoc :price (:value price-result))
                    (assoc :pages (:value pages-result))
-                   (assoc :description (:value description-result))))
+                   (assoc :description (:value description-result))
+                   (assoc :cover-image (:value cover-image-result))))
       (failure errors))))
