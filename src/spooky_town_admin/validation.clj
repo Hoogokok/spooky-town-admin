@@ -27,33 +27,50 @@
 (def validate-author (validate-length "글 작가" 1 20))
 (def validate-publisher (validate-length "출판사" 1 50))
 
+(def error-messages
+  {:title "제목의 길이는 1에서 100 사이여야 합니다."
+   :artist "그림 작가의 길이는 1에서 20 사이여야 합니다."
+   :author "글 작가의 길이는 1에서 20 사이여야 합니다."
+   :publisher "출판사의 길이는 1에서 50 사이여야 합니다."
+   :isbn-13 "유효하지 않은 ISBN-13 형식입니다."
+   :isbn-10 "유효하지 않은 ISBN-10 형식입니다."
+   :publication-date "유효하지 않은 출판일 형식입니다. YYYY-MM-DD 형식이어야 합니다."
+   :price "가격은 0 이상의 숫자여야 합니다."
+   :pages "쪽수는 1 이상의 정수여야 합니다."
+   :description "설명의 길이는 0에서 1000 사이여야 합니다."
+   :cover-image-type "JPEG 또는 PNG 형식의 이미지만 허용됩니다."
+   :cover-image-dimensions "이미지 크기는 1000x1500 픽셀을 초과할 수 없습니다."
+   :cover-image-area "이미지 영역이 100 메가 픽셀을 초과합니다."
+   :cover-image-size "파일 크기가 10MB를 초과합니다."
+   :cover-image-missing "파일이 존재하지 않습니다."})
+
 (defn validate-isbn-13 [isbn]
   (if (and (string? isbn)
            (re-matches #"^(?:978|979)-\d-\d{2,7}-\d{1,7}-\d$" isbn))
     (success isbn)
-    (failure {"ISBN-13" "유효하지 않은 ISBN-13 형식입니다."})))
+    (failure {"ISBN-13" (error-messages :isbn-13)})))
 
 (defn validate-isbn-10 [isbn]
   (if (and (string? isbn)
            (re-matches #"^\d{1,5}-\d{1,7}-\d{1,6}-[\dX]$" isbn))
     (success isbn)
-    (failure {"ISBN-10" "유효하지 않은 ISBN-10 형식입니다."})))
+    (failure {"ISBN-10" (error-messages :isbn-10)})))
 
 (defn validate-publication-date [date]
   (if (and (string? date)
            (re-matches #"^\d{4}-\d{2}-\d{2}$" date))
     (success date)
-    (failure {"출판일" "유효하지 않은 출판일 형식입니다. YYYY-MM-DD 형식이어야 합니다."})))
+    (failure {"출판일" (error-messages :publication-date)})))
 
 (defn validate-price [price]
   (if (and (number? price) (>= price 0))
     (success price)
-    (failure {"가격" "가격은 0 이상의 숫자여야 합니다."})))
+    (failure {"가격" (error-messages :price)})))
 
 (defn validate-pages [pages]
   (if (and (integer? pages) (> pages 0))
     (success pages)
-    (failure {"쪽수" "쪽수는 1 이상의 정수여야 합니다."})))
+    (failure {"쪽수" (error-messages :pages)})))
 
 (def validate-description (validate-length "설명" 0 1000))
 
@@ -78,26 +95,26 @@
   (let [{:keys [content-type]} (get-image-info file)]
     (if (contains? #{"image/jpeg" "image/png"} content-type)
       (success file)
-      (failure {"표지 이미지" "JPEG 또는 PNG 형식의 이미지만 허용됩니다."}))))
+      (failure {"표지 이미지" (error-messages :cover-image-type)}))))
 
 (defn validate-image-dimensions [file]
   (let [{:keys [width height]} (get-image-info file)]
     (if (and (<= width 1000) (<= height 1500))
       (success file)
-      (failure {"표지 이미지" "이미지 크기는 1000x1500 픽셀을 초과할 수 없습니다."}))))
+      (failure {"표지 이미지" (error-messages :cover-image-dimensions)}))))
 
 (defn validate-image-area [file]
   (let [{:keys [width height]} (get-image-info file)
         area (* width height)]
     (if (<= area 100000000)  ; 100 메가 픽셀
       (success area)
-      (failure {"표지 이미지" "이미지 영역이 100 메가 픽셀을 초과합니다."}))))
+      (failure {"표지 이미지" (error-messages :cover-image-area)}))))
 
 (defn validate-file-size [file]
   (let [size (.length (io/file file))]
     (if (<= size (* 10 1024 1024))  ; 10MB
       (success size)
-      (failure {"표지 이미지" "파일 크기가 10MB를 초과합니다."}))))
+      (failure {"표지 이미지" (error-messages :cover-image-size)}))))
 
 (defn validate-cover-image [file]
   (if (and file (.exists (io/file file)))
@@ -115,7 +132,7 @@
       (if (empty? errors)
         (success file)
         (failure errors)))
-    (failure {"표지 이미지" "파일이 존재하지 않습니다."})))
+    (failure {"표지 이미지" (error-messages :cover-image-missing)})))
 
 (defn validate-optional-field [field-name validator]
   (fn [value]
