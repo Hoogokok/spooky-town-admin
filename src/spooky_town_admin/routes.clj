@@ -2,16 +2,16 @@
   (:require [compojure.core :refer [defroutes POST]]
             [compojure.route :as route]
             [ring.util.response :refer [response bad-request]]
-            [spooky-town-admin.db :as db]
-            [spooky-town-admin.validation :refer [validate-comic]]))
+            [spooky-town-admin.comic :as comic]))
+
+(defn handle-create-comic [body]
+  (let [result (comic/create-comic body)]
+    (if (:success result)
+      (response {:id (:id result)})
+      (bad-request {:error (:error result)
+                   :details (:details result)}))))
 
 (defroutes app-routes
   (POST "/api/comics" {body :body}
-    (try
-      (let [validated-comic (validate-comic body)
-            id (db/add-comic validated-comic)]
-        (response {:id id}))
-      (catch Exception e
-        (bad-request {:error (.getMessage e)
-                      :details (ex-data e)}))))
+    (handle-create-comic body))
   (route/not-found "Not Found"))
