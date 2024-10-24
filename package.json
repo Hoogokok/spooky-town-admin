@@ -1,0 +1,17 @@
+{
+    "name": "spooky-town-admin",
+    "version": "0.1.0",
+    "private": true,
+    "dependencies": {
+      "react": "^18.2.0",
+      "react-dom": "^18.2.0"
+    },
+    "devDependencies": {
+      "shadow-cljs": "^2.25.2"
+    },
+    "scripts": {
+      "watch": "shadow-cljs watch app",
+      "release": "shadow-cljs release app",
+      "clean": "rm -rf target && rm -rf resources/public/js"
+    }
+  }
