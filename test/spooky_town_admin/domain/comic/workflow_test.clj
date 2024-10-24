@@ -42,9 +42,9 @@
   
   (testing "크기 초과 이미지 실패"
     (let [invalid-image {:content-type "image/jpeg"
-                        :width 2000
-                        :height 3000
+                        :width 20000  ;; max-dimension(12000)을 초과
+                        :height 30000  ;; max-dimension(12000)을 초과
                         :size (* 5 1024 1024)}
           result (workflow/validate-image-constraints invalid-image)]
       (is (not (workflow/success? result)))
-      (is (instance? ValidationError (:error result))))))  ;; errors/ 제거
+      (is (instance? ValidationError (:error result))))))
