@@ -3,12 +3,7 @@
             [compojure.route :as route]
             [ring.util.response :refer [response bad-request]]
             [spooky-town-admin.db :as db]
-            [clojure.spec.alpha :as s]))
-
-(defn validate-comic [comic]
-  (if (s/valid? :spooky-town-admin.db/comic comic)
-    comic
-    (throw (ex-info "Invalid comic data" (s/explain-data :spooky-town-admin.db/comic comic)))))
+            [spooky-town-admin.validation :refer [validate-comic]]))
 
 (defroutes app-routes
   (POST "/api/comics" {body :body}
