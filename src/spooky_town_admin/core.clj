@@ -2,17 +2,26 @@
   (:require [ring.adapter.jetty :as jetty]
             [ring.middleware.json :refer [wrap-json-response wrap-json-body]]
             [ring.middleware.multipart-params :refer [wrap-multipart-params]]
-            [spooky-town-admin.routes :refer [app-routes]])
+            [spooky-town-admin.web.routes :as routes]
+            [spooky-town-admin.application.comic-service :as comic-service])
   (:gen-class))
 
-(def app
-  (-> app-routes
-      wrap-json-response
-      (wrap-json-body {:keywords? true})
-      wrap-multipart-params))
+(def config
+  {:image-storage {:bucket "comics"
+                   :region "auto"
+                   :account-id "your-account-id"}})
+
+(defn create-app [env]
+  (let [service (comic-service/create-comic-service env config)]
+    (-> (routes/create-app service)
+        wrap-json-response
+        (wrap-json-body {:keywords? true})
+        wrap-multipart-params)))
 
 (defn start-server [port]
-  (jetty/run-jetty app {:port port :join? false}))
+  (let [env (or (System/getenv "APP_ENV") :dev)
+        app (create-app env)]
+    (jetty/run-jetty app {:port port :join? false})))
 
 (defn -main
   "Start the web server"
