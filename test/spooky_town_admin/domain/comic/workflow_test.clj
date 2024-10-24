@@ -8,8 +8,8 @@
   {:title "테스트 만화"
    :artist "테스트 작가"
    :author "테스트 글작가"
-   :isbn13 "978-1-23456-789-0"
-   :isbn10 "1-23456-789-0"
+   :isbn13 "9780306406157"
+   :isbn10 "0-321-14653-0"
    :publisher "테스트 출판사"
    :price 15000})
 
@@ -23,7 +23,7 @@
     (let [invalid-data (dissoc valid-comic-data :author)
           result (workflow/create-comic-workflow invalid-data)]
       (is (not (workflow/success? result)))
-      (is (instance? ValidationError (:error result)))))  ;; errors/ 제거
+      (is (instance? ValidationError (:error result)))))
   
   (testing "잘못된 ISBN 형식"
     (let [invalid-data (assoc valid-comic-data :isbn13 "invalid-isbn")
