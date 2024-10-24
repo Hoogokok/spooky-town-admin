@@ -13,8 +13,8 @@
   {:title "테스트 만화"
    :artist "테스트 작가"
    :author "테스트 글작가"
-   :isbn13 "978-1-23456-789-0"
-   :isbn10 "1-23456-789-0"
+   :isbn13 "9780306406157"
+   :isbn10 "0-321-14653-0"
    :publisher "테스트 출판사"
    :price 15000})
 
@@ -38,7 +38,7 @@
   (testing "ISBN으로 만화 조회"
     (let [repo (persistence/create-comic-repository)]
       (persistence/save-comic repo test-comic)
-      (let [comic (persistence/find-comic-by-isbn repo "978-1-23456-789-0")]
+      (let [comic (persistence/find-comic-by-isbn repo "9780306406157")]
         (is (some? comic))
         (is (= "테스트 만화" (:title comic)))))))
 
