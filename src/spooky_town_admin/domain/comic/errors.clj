@@ -28,25 +28,30 @@
     :publication-date "유효하지 않은 출판일 형식입니다. YYYY-MM-DD 형식이어야 합니다."
     :price "가격은 0 이상의 숫자여야 합니다."
     :pages "쪽수는 1 이상의 정수여야 합니다."
-    :description "설명의 길이는 0에서 1000 사이여야 합니다."}
-   
+    :description "설명의 길이는 0에서 1000 사이여야 합니다."
+    :cover-image "표지 이미지가 유효하지 않습니다."}
+
    :business
    {:duplicate-isbn "이미 존재하는 ISBN입니다."
-    :invalid-publication-date "출판일은 미래일 수 없습니다."}
+    :invalid-publication-date "출판일은 미래일 수 없습니다."
+    :invalid-cover-image "표지 이미지가 요구사항을 충족하지 않습니다."}
    
    :system
    {:db-error "데이터베이스 오류가 발생했습니다."
     :image-upload-error "이미지 업로드 중 오류가 발생했습니다."
-    :image-processing-error "이미지 처리 중 오류가 발생했습니다."}})
+    :image-processing-error "이미지 처리 중 오류가 발생했습니다."
+    :image-storage-error "이미지 저장소 접근 중 오류가 발생했습니다."
+    :image-metadata-error "이미지 메타데이터 처리 중 오류가 발생했습니다."}})
 
 ;; 이미지 관련 에러 메시지
 (def image-error-messages
-  {:type "JPEG 또는 PNG 형식의 이미지만 허용됩니다."
-   :dimensions "이미지 크기는 1000x1500 픽셀을 초과할 수 없습니다."
+  {:type "PNG, GIF, JPEG, WebP, SVG 형식의 이미지만 허용됩니다."
+   :dimensions "이미지 크기는 12000x12000 픽셀을 초과할 수 없습니다."
    :area "이미지 영역이 100 메가 픽셀을 초과합니다."
    :size "파일 크기가 10MB를 초과합니다."
    :missing "파일이 존재하지 않습니다."
    :invalid "표지 이미지가 유효하지 않습니다."})
+
 
 ;; 헬퍼 함수들
 (defn get-validation-message [field]
