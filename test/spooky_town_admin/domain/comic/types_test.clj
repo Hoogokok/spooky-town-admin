@@ -9,7 +9,7 @@
                           :artist "테스트 작가"
                           :author "테스트 글작가"
                           :isbn13 "9781234567890"
-                          :isbn10 "1-23456-789-0"}
+                          :isbn10 "1234567890"}
           optional-fields {:publisher "테스트 출판사"
                          :price 15000}
           comic (types/create-comic required-fields optional-fields)]
@@ -23,7 +23,7 @@
                           :artist "테스트 작가"
                           ;; author 누락
                           :isbn13 "9781234567890"
-                          :isbn10 "1-23456-789-0"}
+                          :isbn10 "1234567890"}
           optional-fields {}
           comic (types/create-comic required-fields optional-fields)]
       
@@ -37,7 +37,9 @@
     (is (not (s/valid? ::types/isbn13 "invalid-isbn"))))  ;; 잘못된 형식은 실패
   
   (testing "ISBN-10 형식 검증"
-    (is (s/valid? ::types/isbn10 "0-321-14653-0"))
+    (is (s/valid? ::types/isbn10 "0321146530"))
+    (is (s/valid? ::types/isbn10 "0132350882"))  ;; Clean Code의 ISBN-10
+    (is (not (s/valid? ::types/isbn10 "0-321-14653-0")))  ;; 하이픈 포함은 실패
     (is (not (s/valid? ::types/isbn10 "invalid-isbn"))))
   
   (testing "제목 길이 검증"

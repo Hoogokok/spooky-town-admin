@@ -27,7 +27,15 @@
 ;; ISBN-10 유효성 검사 함수 추가
 (defn valid-isbn10? [isbn]
   (let [cleaned-isbn (apply str (filter #(Character/isDigit %) isbn))]
-    (= 10 (count cleaned-isbn))))
+    (when (= 10 (count cleaned-isbn))
+      (let [check-digit (last cleaned-isbn)
+            digits (map #(Character/digit % 10) (butlast cleaned-isbn))
+            sum (reduce + (map-indexed #(* (- 10 %1) %2) digits))
+            remainder (mod sum 11)
+            expected-check-digit (if (zero? remainder) "0" 
+                                 (if (= 1 remainder) "X" 
+                                   (str (- 11 remainder))))]
+        (= (str check-digit) expected-check-digit)))))
 
 
 ;; 필수 값 객체들
@@ -61,7 +69,7 @@
 ;; ISBN-10 스펙 추가
 (s/def ::isbn10 
   (s/and string? 
-         #(re-matches #"^\d{1,5}-\d{1,7}-\d{1,6}-[\dX]$" %)
+         #(re-matches #"^\d{9}[\dX]$" %)  ;; 하이픈 미포함 10자리
          valid-isbn10?))
 (s/def ::title (s/and string? #(<= 1 (count %) 100)))
 (s/def ::artist (s/and string? #(<= 1 (count %) 20)))

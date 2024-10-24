@@ -45,7 +45,7 @@
    :artist "테스트 작가"
    :author "테스트 글작가"
    :isbn13 "9780306406157"
-   :isbn10 "0-321-14653-0"
+   :isbn10 "0321146530"
    :publisher "테스트 출판사"
    :price 15000})
 
@@ -66,7 +66,7 @@
             _ (println "Test image created:" (.exists test-image))
             comic-with-image (assoc test-comic-data 
                                   :isbn13 "9780132350884"  
-                                  :isbn10 "0-321-14653-0"
+                                  :isbn10 "0321146530"
                                   :cover-image test-image)
             result (service/create-comic service comic-with-image)]
         (println "Metadata result:" (image-storage/extract-image-metadata test-image))
@@ -89,7 +89,7 @@
             _ (spit invalid-image "이것은 이미지가 아닙니다")
             comic-with-invalid-image (assoc test-comic-data 
                                           :isbn13 "9781234567893"  ;; 다른 ISBN 사용
-                                          :isbn10 "1-23456-789-3"
+                                          :isbn10 "1234567893"
                                           :cover-image invalid-image)
             result (service/create-comic service comic-with-invalid-image)]
         (is (not (:success result)))
@@ -120,7 +120,7 @@
         (assoc test-comic-data 
                :title "테스트 만화 2"
                :isbn13 "9780132350884"  ;; Clean Code의 ISBN-13
-               :isbn10 "0-132-35088-4"))  ;; Clean Code의 ISBN-10
+               :isbn10 "0132350882"))  ;; Clean Code의 ISBN-10
       (let [result (service/list-comics service)]
         (is (:success result))
         (is (= 2 (count (:comics result))))
