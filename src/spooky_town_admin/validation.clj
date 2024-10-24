@@ -144,37 +144,29 @@
           (failure {field-name (get (:error result) field-name)}))))))
 
 (defn validate-comic [comic]
-  (let [title-result (validate-title (:title comic))
-        artist-result (validate-artist (:artist comic))
-        author-result (validate-author (:author comic))
-        isbn-13-result (validate-isbn-13 (:isbn-13 comic))
-        isbn-10-result (validate-isbn-10 (:isbn-10 comic))
-        publisher-result ((validate-optional-field "출판사" validate-publisher) (:publisher comic))
-        publication-date-result ((validate-optional-field "출판일" validate-publication-date) (:publication-date comic))
-        price-result ((validate-optional-field "가격" validate-price) (:price comic))
-        pages-result ((validate-optional-field "쪽수" validate-pages) (:pages comic))
-        description-result ((validate-optional-field "설명" validate-description) (:description comic))
-        cover-image-result ((validate-optional-field "표지 이미지" validate-cover-image) (:cover-image comic))
-        all-results [title-result artist-result author-result isbn-13-result isbn-10-result
-                     publisher-result publication-date-result price-result pages-result description-result
-                     cover-image-result]
+  (let [validations [[:title validate-title]
+                     [:artist validate-artist]
+                     [:author validate-author]
+                     [:isbn-13 validate-isbn-13]
+                     [:isbn-10 validate-isbn-10]
+                     [:publisher (validate-optional-field "출판사" validate-publisher)]
+                     [:publication-date (validate-optional-field "출판일" validate-publication-date)]
+                     [:price (validate-optional-field "가격" validate-price)]
+                     [:pages (validate-optional-field "쪽수" validate-pages)]
+                     [:description (validate-optional-field "설명" validate-description)]
+                     [:cover-image (validate-optional-field "표지 이미지" validate-cover-image)]]
+        results (map (fn [[field validator]]
+                       (validator (get comic field)))
+                     validations)
         errors (reduce (fn [acc result]
                          (if (success? result)
                            acc
                            (merge acc (:error result))))
                        {}
-                       all-results)]
+                       results)]
     (if (empty? errors)
-      (success (-> comic
-                   (assoc :title (:value title-result))
-                   (assoc :artist (:value artist-result))
-                   (assoc :author (:value author-result))
-                   (assoc :isbn-13 (:value isbn-13-result))
-                   (assoc :isbn-10 (:value isbn-10-result))
-                   (assoc :publisher (:value publisher-result))
-                   (assoc :publication-date (:value publication-date-result))
-                   (assoc :price (:value price-result))
-                   (assoc :pages (:value pages-result))
-                   (assoc :description (:value description-result))
-                   (assoc :cover-image (:value cover-image-result))))
+      (success (reduce (fn [acc [field _]]
+                         (assoc acc field (get-in (nth results (.indexOf (map first validations) field)) [:value])))
+                       comic
+                       validations))
       (failure errors))))
