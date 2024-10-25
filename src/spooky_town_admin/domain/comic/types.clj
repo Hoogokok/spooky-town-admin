@@ -24,9 +24,12 @@
         (and (or (= "978" prefix) (= "979" prefix))
              (= check-digit calculated-check-digit))))))
 
-;; ISBN-10 유효성 검사 함수 추가
 (defn valid-isbn10? [isbn]
-  (let [cleaned-isbn (apply str (filter #(Character/isDigit %) isbn))]
+  (println "Validating ISBN-10:" isbn)
+  (let [cleaned-isbn (if (= (last isbn) \X)  ;; X를 별도로 처리
+                      (str (apply str (filter #(Character/isDigit %) (butlast isbn))) "X")
+                      (apply str (filter #(Character/isDigit %) isbn)))]
+    (println "Cleaned ISBN-10:" cleaned-isbn)
     (when (= 10 (count cleaned-isbn))
       (let [check-digit (last cleaned-isbn)
             digits (map #(Character/digit % 10) (butlast cleaned-isbn))
@@ -34,7 +37,9 @@
             remainder (mod sum 11)
             expected-check-digit (if (zero? remainder) "0" 
                                  (if (= 1 remainder) "X" 
-                                   (str (- 11 remainder))))]
+                                   (str (- 11 remainder))))
+            _ (println "Expected check digit:" expected-check-digit)
+            _ (println "Actual check digit:" (str check-digit))]
         (= (str check-digit) expected-check-digit)))))
 
 
