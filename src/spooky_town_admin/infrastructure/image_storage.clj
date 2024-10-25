@@ -14,22 +14,24 @@
   (get-image-url [this image-id]))
 
 ;; 이미지 메타데이터 추출
-(defn extract-image-metadata [^File file]
+(defn extract-image-metadata [image-data]
   (try
-    (let [^BufferedImage image (ImageIO/read file)
-          ^Path path (.toPath file)
+    (let [^File temp-file (:tempfile image-data)
+          ^BufferedImage image (ImageIO/read temp-file)
+          ^Path path (.toPath temp-file)
           content-type (Files/probeContentType path)]
       {:success true
        :metadata {:width (.getWidth image)
                  :height (.getHeight image)
                  :content-type content-type
-                 :size (.length file)}})
+                 :size (.length temp-file)}})
     (catch Exception e
       {:success false
        :error (errors/system-error 
                :image-processing-error
                (errors/get-system-message :image-processing-error)
                (.getMessage e))})))
+
 
 ;; 테스트용 Mock CDN 저장소 구현
 (defrecord MockCDNImageStorage []
