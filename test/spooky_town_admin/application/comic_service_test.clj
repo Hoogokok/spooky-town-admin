@@ -3,6 +3,8 @@
             [spooky-town-admin.application.comic-service :as service]
             [spooky-town-admin.infrastructure.persistence :as persistence]
             [spooky-town-admin.infrastructure.image-storage :as image-storage]
+            [spooky-town-admin.domain.common.result :as r]
+            [spooky-town-admin.domain.comic.workflow :as workflow]
             [spooky-town-admin.domain.comic.errors :as errors])
   (:import [java.io File]
            [javax.imageio ImageIO]
@@ -13,23 +15,21 @@
   image-storage/ImageStorage
   (store-image [_ image]
     (try
-      (let [metadata-result (image-storage/extract-image-metadata image)]
-        (if (:success metadata-result)
-          {:success true
-           :image-id "test-image-id"
-           :metadata (:metadata metadata-result)}
-          metadata-result))
+      (let [metadata (workflow/extract-image-metadata image)]
+        (if metadata
+          (r/success {:image-id "test-image-id"
+                     :metadata metadata})
+          (r/failure (errors/validation-error :cover-image 
+                                            (errors/get-image-error-message :invalid)))))
       (catch Exception _
-        {:success false
-         :error (errors/validation-error :cover-image 
-                                       (errors/get-image-error-message :invalid))})))
+        (r/failure (errors/validation-error :cover-image 
+                                          (errors/get-image-error-message :invalid))))))
   
   (delete-image [_ _]
-    {:success true})
+    (r/success true))
   
   (get-image-url [_ image-id]
-    (str "https://mock-cdn.example.com/images/" image-id)))
-
+    (r/success (str "https://mock-cdn.example.com/images/" image-id))))
 ;; 테스트 픽스처
 (defn reset-db-fixture [f]
   (reset! persistence/db-state {:comics {} :next-id 1})
@@ -71,10 +71,11 @@
             comic-with-image (assoc test-comic-data 
                                   :isbn13 "9780132350884"
                                   :isbn10 "0132350882"
-                                  :cover-image image-data)  ;; 이미지 데이터 맵 사용
+                                  :cover-image image-data)
             result (service/create-comic service comic-with-image)]
-        (is (:success result))
-        (is (pos? (:id result)))))
+        (is (:success result) "만화 생성이 성공해야 합니다")
+        (is (map? (:value result)) "결과는 맵이어야 합니다")
+        (is (pos-int? (:id (:value result))) "ID는 양의 정수여야 합니다")))
     
     (testing "잘못된 이미지로 만화 생성 시도"
       (let [invalid-file (File/createTempFile "invalid" ".jpg")
@@ -88,7 +89,7 @@
                                           :isbn10 "1234567893"
                                           :cover-image invalid-image-data)
             result (service/create-comic service comic-with-invalid-image)]
-        (.delete invalid-file)  ;; 테스트 후 파일 정리
+        (.delete invalid-file)
         (is (not (:success result)))
         (is (= :cover-image (get-in result [:error :field])))))))
 
@@ -97,9 +98,10 @@
     
     (testing "존재하는 만화 조회"
       (let [create-result (service/create-comic service test-comic-data)
-            get-result (service/get-comic service (:id create-result))]
+            comic-id (get-in create-result [:value :id])
+            get-result (service/get-comic service comic-id)]
         (is (:success get-result))
-        (is (= "테스트 만화" (get-in get-result [:comic :title])))))
+        (is (= "테스트 만화" (get-in get-result [:value :title])))))
     
     (testing "존재하지 않는 만화 조회"
       (let [result (service/get-comic service 999)]
