@@ -1,6 +1,7 @@
 (ns spooky-town-admin.components.comic-form
   (:require [reagent.core :as r]
             [ajax.core :refer [POST]]))
+(def api-base-url "http://localhost:3000")  ;; 추가
 
 (def initial-form-state
   {:title ""
@@ -14,6 +15,42 @@
    :page-count nil
    :description ""
    :cover-image nil})
+
+(defn create-form-data [data]
+  (let [form-data (js/FormData.)]
+    (println "Creating form data from:" data)  ;; 로깅 추가
+    ;; 일반 필드들 추가
+    (doseq [[key value] (dissoc data :cover-image)]
+      (when (some? value)
+        (println "Appending field:" key "with value:" value)  ;; 로깅 추가
+        (.append form-data (name key) value)))
+    ;; 파일 필드 추가
+    (when-let [file (:cover-image data)]
+      (println "Appending file field:" "cover-image" "with value:" file)  ;; 로깅 추가
+      (.append form-data "cover-image" file))
+    form-data))
+
+(defn format-error-message [{:keys [error message field]}]
+  (case error
+    "ValidationError" (str (case field
+                           :title "제목"
+                           :artist "작가"
+                           :author "글작가"
+                           :isbn13 "ISBN-13"
+                           :isbn10 "ISBN-10"
+                           :publisher "출판사"
+                           :publication-date "출판일"
+                           :price "가격"
+                           :page-count "페이지 수"
+                           :description "설명"
+                           :cover-image "표지 이미지"
+                           (name field))
+                         " 필드가 유효하지 않습니다: "
+                         (or message "입력값을 확인해주세요."))
+    "BusinessError" (or message "비즈니스 규칙 위반")
+    "SystemError" "서버 오류가 발생했습니다."
+    message))
+
 
 (defn comic-form []
   (let [form-data (r/atom initial-form-state)
@@ -35,48 +72,60 @@
             
             (handle-submit [e]
               (.preventDefault e)
-              (POST "/api/comics"
-                {:params @form-data
+              (println "Submitting form data:" @form-data)
+              (POST (str api-base-url "/api/comics")
+                {:body (create-form-data @form-data)
+                 :format :raw
+                 :response-format :json
+                 :keywords? true
+                 :headers {"Accept" "application/json"}
                  :handler (fn [response]
+                           (println "Success response:" response)
                            (reset! form-data initial-form-state)
                            (reset! error-message nil))
-                 :error-handler (fn [{:keys [response]}]
+                 :error-handler (fn [{:keys [response status-text]}]
+                                (println "Error response:" response status-text)
                                 (reset! error-message 
-                                        (or (get-in response [:error :message])
-                                            "서버 오류가 발생했습니다.")))}))]
+                                        (if response
+                                          (format-error-message (:body response))
+                                          "서버 오류가 발생했습니다.")))}))
+            ]
       
-      (fn []
+      
+         (fn []
         [:div.comic-form
          [:h2 "만화 정보 입력"]
          
          (when @error-message
-           [:div.error-message @error-message])
+           [:div.error-message.alert.alert-danger
+            [:i.fas.fa-exclamation-circle]
+            [:span @error-message]])
          
          [:form {:on-submit handle-submit}
           ;; 필수 필드
           [:div.form-group
-           [:label "제목"]
+           [:label.required "제목"]
            [:input {:type "text"
                    :value (:title @form-data)
                    :required true
                    :on-change #(handle-input-change % :title)}]]
           
           [:div.form-group
-           [:label "작가"]
+           [:label.required "작가"]
            [:input {:type "text"
                    :value (:artist @form-data)
                    :required true
                    :on-change #(handle-input-change % :artist)}]]
           
           [:div.form-group
-           [:label "글작가"]
+           [:label.required "글작가"]
            [:input {:type "text"
                    :value (:author @form-data)
                    :required true
                    :on-change #(handle-input-change % :author)}]]
           
           [:div.form-group
-           [:label "ISBN-13"]
+           [:label.required "ISBN-13"]
            [:input {:type "text"
                    :value (:isbn13 @form-data)
                    :required true
@@ -86,7 +135,7 @@
                    :on-change #(handle-input-change % :isbn13)}]]
           
           [:div.form-group
-           [:label "ISBN-10"]
+           [:label.required "ISBN-10"]
            [:input {:type "text"
                     :value (:isbn10 @form-data)
                     :required true
