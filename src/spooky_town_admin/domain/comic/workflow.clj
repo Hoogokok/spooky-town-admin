@@ -53,11 +53,11 @@
                                     (errors/get-image-error-message :invalid)))
     (let [constraints [{:check #(contains? types/allowed-image-types (:content-type %))
                        :error-type :type}
-                      {:check #(<= (max (:width %) (:height %)) types/max-dimension)
+                      {:check #(>= types/max-dimension (max (:width %) (:height %)))
                        :error-type :dimensions}
-                      {:check #(<= (* (:width %) (:height %)) types/max-area)
+                      {:check #(>= types/max-area (* (:width %) (:height %)))
                        :error-type :area}
-                      {:check #(<= (:size %) types/max-file-size)
+                      {:check #(>= types/max-file-size (:size %))
                        :error-type :size}]]
       (if-let [failed-constraint (first (filter #(not ((:check %) image)) constraints))]
         (r/failure (errors/validation-error :cover-image 
