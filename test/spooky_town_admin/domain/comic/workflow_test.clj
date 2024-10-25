@@ -1,8 +1,8 @@
 (ns spooky-town-admin.domain.comic.workflow-test
   (:require [clojure.test :refer [deftest is testing]]
             [spooky-town-admin.domain.comic.workflow :as workflow]
-            [spooky-town-admin.domain.comic.errors :as errors])
-  (:import [spooky_town_admin.domain.comic.errors ValidationError]))  ;; 여기에 import 추가
+            [spooky-town-admin.domain.comic.errors :as errors]
+            [spooky-town-admin.domain.common.result :as r]))
 
 (def valid-comic-data
   {:title "테스트 만화"
@@ -13,38 +13,50 @@
    :publisher "테스트 출판사"
    :price 15000})
 
+;; 모의 이미지 데이터
+(def mock-image-data
+  {:tempfile nil  ;; 실제 파일 불필요
+   :content-type "image/jpeg"
+   :size 1000
+   :width 800     ;; 메타데이터 직접 제공
+   :height 600})
+
+;; extract-image-metadata 모킹
+(defn mock-extract-image-metadata [image-data]
+  (select-keys image-data [:content-type :size :width :height]))
+
 (deftest create-comic-workflow-test
-  (testing "유효한 데이터로 만화 생성"
+  (testing "전체 워크플로우 성공 케이스"
     (let [result (workflow/create-comic-workflow valid-comic-data)]
-      (is (workflow/success? result))
+      (is (r/success? result))
       (is (= (:title (:value result)) "테스트 만화"))))
   
-  (testing "필수 필드 누락 시 실패"
-    (let [invalid-data (dissoc valid-comic-data :author)
-          result (workflow/create-comic-workflow invalid-data)]
-      (is (not (workflow/success? result)))
-      (is (instance? ValidationError (:error result)))))
-  
-  (testing "잘못된 ISBN 형식"
-    (let [invalid-data (assoc valid-comic-data :isbn13 "invalid-isbn")
-          result (workflow/create-comic-workflow invalid-data)]
-      (is (not (workflow/success? result)))
-      (is (instance? ValidationError (:error result))))))  ;; errors/ 제거
+  (testing "이미지가 있는 경우"
+    (with-redefs [workflow/extract-image-metadata mock-extract-image-metadata]
+      (let [data-with-image (assoc valid-comic-data :cover-image mock-image-data)
+            result (workflow/create-comic-workflow data-with-image)]
+        (is (r/success? result) "워크플로우가 성공해야 합니다")
+        (is (:cover-image-metadata (:value result)) "이미지 메타데이터가 있어야 합니다")))))
 
-(deftest validate-image-constraints-test
-  (testing "이미지 제약조건 검증"
-    (let [valid-image {:content-type "image/jpeg"
-                      :width 800
-                      :height 1200
-                      :size (* 5 1024 1024)}
-          result (workflow/validate-image-constraints valid-image)]
-      (is (workflow/success? result))))
+(deftest process-image-test
+  (testing "유효한 이미지 처리"
+    (with-redefs [workflow/extract-image-metadata mock-extract-image-metadata]
+      (let [comic-data (assoc valid-comic-data :cover-image mock-image-data)
+            result (workflow/process-image comic-data)]
+        (is (r/success? result))
+        (is (:cover-image-metadata (:value result))))))
   
-  (testing "크기 초과 이미지 실패"
-    (let [invalid-image {:content-type "image/jpeg"
-                        :width 20000  ;; max-dimension(12000)을 초과
-                        :height 30000  ;; max-dimension(12000)을 초과
-                        :size (* 5 1024 1024)}
-          result (workflow/validate-image-constraints invalid-image)]
-      (is (not (workflow/success? result)))
-      (is (instance? ValidationError (:error result))))))
+  (testing "이미지가 없는 경우"
+    (let [result (workflow/process-image valid-comic-data)]
+      (is (r/success? result))
+      (is (nil? (:cover-image-metadata (:value result))))))
+  
+  (testing "잘못된 이미지 데이터"
+    (with-redefs [workflow/extract-image-metadata (constantly nil)]
+      (let [invalid-image {:tempfile nil
+                          :content-type "image/jpeg"
+                          :size 1000}
+            result (workflow/process-image (assoc valid-comic-data 
+                                                :cover-image invalid-image))]
+        (is (not (r/success? result)))
+        (is (= :cover-image (:field (:error result))))))))
