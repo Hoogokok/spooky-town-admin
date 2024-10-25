@@ -1,6 +1,48 @@
 (ns spooky-town-admin.domain.comic.types
   (:require [clojure.spec.alpha :as s]))
 
+;; ISBN-13 체크섬 계산 함수
+(defn calculate-isbn13-checksum [isbn]
+  (let [digits (map #(Character/digit % 10) 
+                   (filter #(Character/isDigit %) isbn))
+        products (map-indexed 
+                  (fn [idx digit] 
+                    (* digit (if (even? idx) 1 3))) 
+                  (take 12 digits))
+        sum (reduce + products)
+        remainder (mod sum 10)
+        check-digit (if (zero? remainder) 0 (- 10 remainder))]
+    check-digit))
+
+;; ISBN-13 유효성 검사 함수
+(defn valid-isbn13? [isbn]
+  (let [cleaned-isbn (apply str (filter #(Character/isDigit %) isbn))]
+    (when (= 13 (count cleaned-isbn))
+      (let [prefix (subs cleaned-isbn 0 3)
+            check-digit (Character/digit (last cleaned-isbn) 10)
+            calculated-check-digit (calculate-isbn13-checksum cleaned-isbn)]
+        (and (or (= "978" prefix) (= "979" prefix))
+             (= check-digit calculated-check-digit))))))
+
+(defn valid-isbn10? [isbn]
+  (println "Validating ISBN-10:" isbn)
+  (let [cleaned-isbn (if (= (last isbn) \X)  ;; X를 별도로 처리
+                      (str (apply str (filter #(Character/isDigit %) (butlast isbn))) "X")
+                      (apply str (filter #(Character/isDigit %) isbn)))]
+    (println "Cleaned ISBN-10:" cleaned-isbn)
+    (when (= 10 (count cleaned-isbn))
+      (let [check-digit (last cleaned-isbn)
+            digits (map #(Character/digit % 10) (butlast cleaned-isbn))
+            sum (reduce + (map-indexed #(* (- 10 %1) %2) digits))
+            remainder (mod sum 11)
+            expected-check-digit (if (zero? remainder) "0" 
+                                 (if (= 1 remainder) "X" 
+                                   (str (- 11 remainder))))
+            _ (println "Expected check digit:" expected-check-digit)
+            _ (println "Actual check digit:" (str check-digit))]
+        (= (str check-digit) expected-check-digit)))))
+
+
 ;; 필수 값 객체들
 (defrecord ISBN13 [value])
 (defrecord ISBN10 [value])
@@ -25,8 +67,15 @@
 (defrecord ImageMetadata [content-type width height size])
 
 ;; 도메인 타입 스펙 - 필수 필드
-(s/def ::isbn13 (s/and string? #(re-matches #"^(?:978|979)-\d-\d{2,7}-\d{1,7}-\d$" %)))
-(s/def ::isbn10 (s/and string? #(re-matches #"^\d{1,5}-\d{1,7}-\d{1,6}-[\dX]$" %)))
+(s/def ::isbn13 
+  (s/and string? 
+         #(re-matches #"^(?:978|979)\d{10}$" %)  ;; 하이픈 미포함 13자리만 허용
+         valid-isbn13?))
+;; ISBN-10 스펙 추가
+(s/def ::isbn10 
+  (s/and string? 
+         #(re-matches #"^\d{9}[\dX]$" %)  ;; 하이픈 미포함 10자리
+         valid-isbn10?))
 (s/def ::title (s/and string? #(<= 1 (count %) 100)))
 (s/def ::artist (s/and string? #(<= 1 (count %) 20)))
 (s/def ::author (s/and string? #(<= 1 (count %) 20)))

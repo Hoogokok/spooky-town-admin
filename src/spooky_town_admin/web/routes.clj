@@ -8,19 +8,33 @@
 ;; 에러 응답 생성 헬퍼
 (defn- error-response [error]
   (let [status (cond
-                 (instance? errors/ValidationError error) 400
-                 (instance? errors/BusinessError error) 400
-                 (instance? errors/SystemError error) 500
-                 :else 500)]
+                 (instance? spooky_town_admin.domain.comic.errors.ValidationError error) 400
+                 (instance? spooky_town_admin.domain.comic.errors.BusinessError error) 400
+                 (instance? spooky_town_admin.domain.comic.errors.SystemError error) 500
+                 :else 500)
+        error-type (cond
+                    (instance? spooky_town_admin.domain.comic.errors.ValidationError error) "ValidationError"
+                    (instance? spooky_town_admin.domain.comic.errors.BusinessError error) "BusinessError"
+                    (instance? spooky_town_admin.domain.comic.errors.SystemError error) "SystemError"
+                    :else "UnknownError")]
     {:status status
-     :body {:error (type error)
+     :body {:error error-type
             :message (:message error)
-            :details (when (instance? errors/SystemError error)
+            :field (when (instance? spooky_town_admin.domain.comic.errors.ValidationError error)
+                    (:field error))
+            :details (when (instance? spooky_town_admin.domain.comic.errors.SystemError error)
                       (:details error))}}))
 
 ;; 요청 처리 핸들러
-(defn handle-create-comic [service body]
-  (let [result (comic-service/create-comic service body)]
+(defn handle-create-comic [service request]
+  (let [params (-> (:params request)
+                   (merge (reduce-kv (fn [m k v]
+                                     (if (contains? m (keyword k))
+                                       m
+                                       (assoc m (keyword k) v)))
+                                   {}
+                                   (:multipart-params request))))
+        result (comic-service/create-comic service params)]
     (if (:success result)
       (response {:id (:id result)})
       (bad-request (error-response (:error result))))))
@@ -38,9 +52,9 @@
 ;; 라우트 정의
 (defn create-routes [service]
   (defroutes app-routes
-    ;; 만화 생성
-    (POST "/api/comics" {body :body}
-      (handle-create-comic service body))
+    ;; 만화 생성 - 전체 request를 전달
+    (POST "/api/comics" request
+      (handle-create-comic service request))
     
     ;; 만화 조회
     (GET "/api/comics/:id" [id]
@@ -50,6 +64,8 @@
     (GET "/api/comics" []
       (handle-list-comics service))
     
+    (route/resources "/")
+
     ;; 404 처리
     (route/not-found 
      {:error "Not Found"

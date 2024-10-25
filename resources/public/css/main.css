@@ -1,0 +1,237 @@
+/* 전역 스타일 */
+:root {
+    --primary-color: #2c3e50;
+    --secondary-color: #34495e;
+    --accent-color: #3498db;
+    --error-color: #e74c3c;
+    --success-color: #2ecc71;
+    --text-color: #2c3e50;
+    --border-color: #bdc3c7;
+    --background-color: #ecf0f1;
+  }
+  
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+    color: var(--text-color);
+    background-color: var(--background-color);
+    margin: 0;
+    padding: 20px;
+  }
+  
+  /* 컨테이너 */
+  .container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+  
+  /* 제목 */
+  h1 {
+    color: var(--primary-color);
+    text-align: center;
+    margin-bottom: 30px;
+  }
+  
+  h2 {
+    color: var(--secondary-color);
+    margin-bottom: 20px;
+  }
+  
+  /* 폼 스타일링 */
+  .comic-form {
+    padding: 20px;
+  }
+  
+  .form-group {
+    margin-bottom: 20px;
+  }
+  
+  label {
+    display: block;
+    margin-bottom: 8px;
+    color: var(--secondary-color);
+    font-weight: 500;
+  }
+  
+  input[type="text"],
+  input[type="number"],
+  input[type="date"],
+  textarea {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 16px;
+    transition: border-color 0.3s ease;
+  }
+  
+  input[type="file"] {
+    width: 100%;
+    padding: 8px 0;
+  }
+  
+  textarea {
+    min-height: 100px;
+    resize: vertical;
+  }
+  
+  input:focus,
+  textarea:focus {
+    outline: none;
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+  }
+  
+  /* 버튼 스타일링 */
+  .submit-button {
+    display: block;
+    width: 100%;
+    padding: 12px;
+    background-color: var(--accent-color);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 16px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+  }
+  
+  .submit-button:hover {
+    background-color: #2980b9;
+  }
+  
+  .submit-button:active {
+    transform: translateY(1px);
+  }
+  
+  /* 에러 메시지 */
+  .error-message {
+    background-color: #fdeaea;
+    border: 1px solid var(--error-color);
+    color: var(--error-color);
+    padding: 12px;
+    border-radius: 4px;
+    margin-bottom: 20px;
+  }
+
+  /* ... 기존 스타일 유지 ... */
+
+/* 입력 필드 유효성 검사 스타일 */
+input:invalid {
+  border-color: var(--error-color);
+  background-color: rgba(231, 76, 60, 0.05);
+}
+
+input:invalid:focus {
+  box-shadow: 0 0 0 2px rgba(231, 76, 60, 0.2);
+}
+
+/* 에러 메시지 개선 */
+.error-message {
+  display: flex;
+  align-items: center;
+  background-color: #fdeaea;
+  border: 1px solid var(--error-color);
+  color: var(--error-color);
+  padding: 12px 16px;
+  border-radius: 4px;
+  margin-bottom: 20px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.error-message i {
+  margin-right: 12px;
+  font-size: 16px;
+}
+
+.error-message span {
+  flex: 1;
+}
+
+/* 필수 입력 필드 표시 */
+label.required::after {
+  content: "*";
+  color: var(--error-color);
+  margin-left: 4px;
+}
+
+/* 입력 필드 그룹 개선 */
+.form-group {
+  margin-bottom: 24px;
+}
+
+.form-group:last-child {
+  margin-bottom: 32px;
+}
+
+/* 파일 입력 필드 커스터마이징 */
+.form-group input[type="file"] {
+  background-color: white;
+  border: 1px dashed var(--border-color);
+  padding: 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.form-group input[type="file"]:hover {
+  border-color: var(--accent-color);
+  background-color: rgba(52, 152, 219, 0.05);
+}
+
+/* 숫자 입력 필드 화살표 스타일링 */
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* 로딩 상태 스타일 */
+.submit-button:disabled {
+  background-color: var(--border-color);
+  cursor: not-allowed;
+}
+
+/* 툴팁 스타일 */
+input[title] {
+  cursor: help;
+}
+
+/* 포커스 표시기 개선 */
+:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+}
+
+  
+  
+  /* 반응형 디자인 */
+  @media (max-width: 600px) {
+    .container {
+      padding: 10px;
+    }
+    
+    .comic-form {
+      padding: 10px;
+    }
+    
+    input[type="text"],
+    input[type="number"],
+    input[type="date"],
+    textarea {
+      font-size: 14px;
+    }
+  }
+
+  

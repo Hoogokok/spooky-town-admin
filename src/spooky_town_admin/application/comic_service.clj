@@ -8,16 +8,15 @@
 
 ;; 이미지 처리 관련 함수들
 (defn- extract-and-validate-metadata [image-data]
-  (let [{:keys [success metadata]} (image-storage/extract-image-metadata image-data)]
-    (if success
-      (workflow/validate-image-constraints metadata)
-      (workflow/failure (errors/validation-error :cover-image 
-                                               (errors/get-image-error-message :invalid))))))
+  (if-let [metadata (workflow/extract-image-metadata image-data)]
+    (workflow/validate-image-constraints metadata)
+    (workflow/failure (errors/validation-error :cover-image 
+                                             (errors/get-image-error-message :invalid)))))
 
 (defn- store-image [image-storage image-data metadata]
-  (let [{:keys [success image-id]} (image-storage/store-image image-storage image-data)]
-    (if success
-      (workflow/success {:image-id image-id :metadata metadata})
+  (let [storage-result (image-storage/store-image image-storage image-data)]
+    (if (:success storage-result)
+      (workflow/success {:image-id (:image-id storage-result) :metadata metadata})
       (workflow/failure (errors/validation-error :cover-image 
                                                (errors/get-image-error-message :invalid))))))
 
@@ -27,7 +26,6 @@
       (if (workflow/success? metadata-result)
         (store-image image-storage image-data (:value metadata-result))
         metadata-result))))
-
 ;; 만화 생성 관련 함수들
 (defn- check-duplicate-isbn [comic-repository comic-data]
   (if-let [existing-comic (persistence/find-comic-by-isbn 
@@ -41,19 +39,24 @@
   (let [image-result (process-cover-image image-storage image)]
     (if (workflow/success? image-result)
       (let [comic-with-image (assoc comic-data 
-                                   :cover-image (:image-id (:value image-result))
-                                   :cover-image-metadata (:metadata (:value image-result)))
+                                   :cover-image image
+                                   :cover-image-metadata (:value (:metadata (:value image-result))))
             workflow-result (workflow/create-comic-workflow comic-with-image)]
         (if (workflow/success? workflow-result)
-          (persistence/save-comic comic-repository (:value workflow-result))
-          workflow-result))
-      image-result)))
+          {:success true
+           :id (:id (persistence/save-comic comic-repository (:value workflow-result)))}
+          {:success false
+           :error (:error workflow-result)}))
+      {:success false
+       :error (:error image-result)})))
 
 (defn- create-comic-without-image [comic-repository comic-data]
   (let [workflow-result (workflow/create-comic-workflow comic-data)]
     (if (workflow/success? workflow-result)
-      (persistence/save-comic comic-repository (:value workflow-result))
-      workflow-result)))
+      {:success true
+       :id (:id (persistence/save-comic comic-repository (:value workflow-result)))}
+      {:success false
+       :error (:error workflow-result)})))
 
 ;; 만화 생성 서비스
 (defn create-comic [{:keys [comic-repository image-storage]} comic-data]
