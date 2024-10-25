@@ -16,6 +16,12 @@
     (f (:value result))
     result))
 
+;; map 함수 추가
+(defn map [result f]
+  (if (success? result)
+    (success (f (:value result)))
+    result))
+
 (defn map-error [result f]
   (if (success? result)
     result
