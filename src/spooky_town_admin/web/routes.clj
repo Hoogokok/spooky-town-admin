@@ -27,15 +27,17 @@
 
 ;; 요청 처리 핸들러
 (defn handle-create-comic [service request]
-  (let [params (if-let [multipart (:multipart-params request)]
-                 (merge (:params request) multipart)
-                 (:params request))]
-    (println "Received params:" params)  ;; 로깅 추가
-    (let [result (comic-service/create-comic service params)]
-      (println "Service result:" result)  ;; 로깅 추가
-      (if (:success result)
-        (response {:id (:id result)})
-        (bad-request (error-response (:error result)))))))
+  (let [params (-> (:params request)
+                   (merge (reduce-kv (fn [m k v]
+                                     (if (contains? m (keyword k))
+                                       m
+                                       (assoc m (keyword k) v)))
+                                   {}
+                                   (:multipart-params request))))
+        result (comic-service/create-comic service params)]
+    (if (:success result)
+      (response {:id (:id result)})
+      (bad-request (error-response (:error result))))))
 
 (defn handle-get-comic [service id]
   (let [result (comic-service/get-comic service id)]
