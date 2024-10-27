@@ -41,7 +41,10 @@
     :image-upload-error "이미지 업로드 중 오류가 발생했습니다."
     :image-processing-error "이미지 처리 중 오류가 발생했습니다."
     :image-storage-error "이미지 저장소 접근 중 오류가 발생했습니다."
-    :image-metadata-error "이미지 메타데이터 처리 중 오류가 발생했습니다."}})
+    :image-metadata-error "이미지 메타데이터 처리 중 오류가 발생했습니다."
+    :config-error "필요한 Cloudinary 설정이 누락되었습니다."
+    :cloudinary-error "Cloudinary 오류가 발생했습니다."
+    }})
 
 ;; 이미지 관련 에러 메시지
 (def image-error-messages
