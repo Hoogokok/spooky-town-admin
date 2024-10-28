@@ -1,10 +1,10 @@
 (ns spooky-town-admin.infrastructure.image-storage-test
   (:require [clojure.test :refer [deftest testing is]]
-            [spooky-town-admin.infrastructure.image-storage :as image-storage]
-            [clojure.java.io :as io])
+            [spooky-town-admin.infrastructure.image-storage :as image-storage])
   (:import [java.io File]
            [javax.imageio ImageIO]
-           [java.awt.image BufferedImage]))
+           [java.awt.image BufferedImage]
+           ))
 
 ;; 테스트용 이미지 생성 헬퍼 함수 수정
 (defn create-test-image [width height]
@@ -23,33 +23,37 @@
           image-data (create-test-image 800 1200)
           result (image-storage/store-image storage image-data)]
       (is (:success result))
-      (is (string? (:image-id result)))
-      (is (map? (:metadata result)))
-      (is (= 800 (get-in result [:metadata :width])))
-      (is (= 1200 (get-in result [:metadata :height])))
-      (is (= "image/jpeg" (get-in result [:metadata :content-type])))))
-  
+      (let [value (:value result)]  ;; Result의 value 필드에서 실제 값을 가져옴
+        (is (string? (:image-id value)))
+        (is (map? (:metadata value)))
+        (is (= 800 (get-in value [:metadata :width])))
+        (is (= 1200 (get-in value [:metadata :height])))
+        (is (= "image/jpeg" (get-in value [:metadata :content-type]))))))
+
   (testing "이미지 URL 생성"
     (let [storage (image-storage/create-mock-image-storage)
-          image-id "test-123"]
+          result (image-storage/get-image-url storage "test-123")]
+      (is (:success result))
       (is (= "https://mock-cdn.example.com/images/test-123"
-             (image-storage/get-image-url storage image-id)))))
-  
+             (:value result)))))  ;; Result의 value 필드 확인
+
   (testing "이미지 삭제"
     (let [storage (image-storage/create-mock-image-storage)
           result (image-storage/delete-image storage "test-123")]
-      (is (:success result)))))
+      (is (:success result))
+      (is (true? (:value result))))))  ;; Result의 value 필드가 true인지 확인
 
 (deftest image-metadata-extraction-test
   (testing "유효한 이미지 메타데이터 추출"
     (let [image-data (create-test-image 800 1200)
           result (image-storage/extract-image-metadata image-data)]
       (is (:success result))
-      (is (= 800 (get-in result [:metadata :width])))
-      (is (= 1200 (get-in result [:metadata :height])))
-      (is (= "image/jpeg" (get-in result [:metadata :content-type])))
-      (is (pos? (get-in result [:metadata :size])))))
-  
+      (let [metadata (:value result)]  ;; Result의 value 필드에서 메타데이터 가져옴
+        (is (= 800 (:width metadata)))
+        (is (= 1200 (:height metadata)))
+        (is (= "image/jpeg" (:content-type metadata)))
+        (is (pos? (:size metadata))))))
+
   (testing "잘못된 이미지 파일"
     (let [invalid-file (File/createTempFile "invalid" ".jpg")
           _ (spit invalid-file "이것은 이미지가 아닙니다")
@@ -60,13 +64,11 @@
       (let [result (image-storage/extract-image-metadata invalid-image-data)]
         (.delete invalid-file)  ;; 테스트 후 파일 정리
         (is (not (:success result)))
-        (is (:error result))))))
+        (is (instance? spooky_town_admin.domain.comic.errors.SystemError 
+                      (:error result)))))))  ;; 에러 타입 확인
 
 (deftest image-storage-factory-test
   (testing "테스트 환경에서 Mock 저장소 생성"
     (let [storage (image-storage/create-image-storage :test {})]
-      (is (instance? spooky_town_admin.infrastructure.image_storage.MockCDNImageStorage storage))))
-  
-  (testing "프로덕션 환경에서 R2 저장소 생성"
-    (let [storage (image-storage/create-image-storage :prod {:bucket "test"})]
-      (is (instance? spooky_town_admin.infrastructure.image_storage.CloudflareR2ImageStorage storage)))))
+      (is (instance? spooky_town_admin.infrastructure.image_storage.MockCDNImageStorage 
+                    storage)))))

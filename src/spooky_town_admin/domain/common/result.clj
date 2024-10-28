@@ -17,7 +17,11 @@
     (f (:value result))
     result))
 
-(defn map [result f]
+(defn map
+  "Result 모나드의 값을 변환하는 함수
+   result: Result 인스턴스
+   f: 변환 함수"
+  [result f]  ;; 파라미터 순서 명확히 지정
   (if (success? result)
     (success (f (:value result)))
     result))
@@ -33,7 +37,9 @@
     {:success true
      :value (:value result)}
     {:success false
-     :error (:error result)}))
+     :error (if (record? (:error result))  ;; record인 경우 map으로 변환
+             (into {} (:error result))
+             (:error result))}))
 
 (defn from-map [m]
   (if (:success m)

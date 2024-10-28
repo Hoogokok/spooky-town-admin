@@ -2,6 +2,7 @@
   (:require [clojure.test :refer [deftest testing is use-fixtures]]
             [spooky-town-admin.application.comic-service :as service]
             [spooky-town-admin.infrastructure.persistence :as persistence]
+            [spooky-town-admin.infrastructure.persistence.in-memory :as in-memory]  ;; 추가
             [spooky-town-admin.infrastructure.image-storage :as image-storage]
             [spooky-town-admin.domain.common.result :as r]
             [spooky-town-admin.domain.comic.workflow :as workflow]
@@ -32,7 +33,7 @@
     (r/success (str "https://mock-cdn.example.com/images/" image-id))))
 ;; 테스트 픽스처
 (defn reset-db-fixture [f]
-  (reset! persistence/db-state {:comics {} :next-id 1})
+  (reset! in-memory/db-state {:comics {} :next-id 1})
   (with-redefs [image-storage/create-image-storage 
                 (fn [& _] (->MockImageStorage))]
     (f)))
@@ -61,10 +62,14 @@
      :filename "test-image.jpg"}))  ;; Ring 멀티파트 형식에 맞게 맵 반환
 
 
-
-
 (deftest create-comic-test
   (let [service (service/create-comic-service :test {})]
+    
+    (testing "기본 만화 생성 (이미지 없음)"
+      (let [result (service/create-comic service test-comic-data)]
+        (is (:success result) "만화 생성이 성공해야 합니다")
+        (is (map? (:value result)) "결과는 맵이어야 합니다")
+        (is (pos-int? (:id (:value result))) "ID는 양의 정수여야 합니다")))
     
     (testing "이미지가 포함된 만화 생성"
       (let [image-data (create-test-image 800 1200)
@@ -77,18 +82,24 @@
         (is (map? (:value result)) "결과는 맵이어야 합니다")
         (is (pos-int? (:id (:value result))) "ID는 양의 정수여야 합니다")))
     
+    (testing "중복된 ISBN으로 만화 생성 시도"
+      (let [result (service/create-comic service test-comic-data)
+            duplicate-result (service/create-comic service test-comic-data)]
+        (is (not (:success duplicate-result)))
+        (is (= :duplicate-isbn (get-in duplicate-result [:error :code])))))
+    
     (testing "잘못된 이미지로 만화 생성 시도"
-      (let [invalid-file (File/createTempFile "invalid" ".jpg")
-            _ (spit invalid-file "이것은 이미지가 아닙니다")
-            invalid-image-data {:tempfile invalid-file
-                              :content-type "image/jpeg"
-                              :size (.length invalid-file)
-                              :filename "invalid.jpg"}
-            comic-with-invalid-image (assoc test-comic-data 
-                                          :isbn13 "9781234567893"
-                                          :isbn10 "1234567893"
-                                          :cover-image invalid-image-data)
-            result (service/create-comic service comic-with-invalid-image)]
+  (let [invalid-file (File/createTempFile "invalid" ".jpg")
+        _ (spit invalid-file "이것은 이미지가 아닙니다")
+        invalid-image-data {:tempfile invalid-file
+                          :content-type "image/jpeg"
+                          :size (.length invalid-file)
+                          :filename "invalid.jpg"}
+        comic-with-invalid-image (assoc test-comic-data 
+                                      :isbn13 "9791158513009"  ;; 다른 ISBN 사용
+                                      :isbn10 "1158513003"     ;; 다른 ISBN 사용
+                                      :cover-image invalid-image-data)
+        result (service/create-comic service comic-with-invalid-image)]
         (.delete invalid-file)
         (is (not (:success result)))
         (is (= :cover-image (get-in result [:error :field])))))))

@@ -29,3 +29,9 @@ resources/public/js/
 node_modules/
 .pnpm-store/
 pnpm-lock.yaml
+
+# Cloudinary
+.cloudinary/
+
+# 환경 변수
+.env

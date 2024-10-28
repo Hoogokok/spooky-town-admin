@@ -10,7 +10,13 @@
                  [ring "1.9.5"]
                  [ring/ring-jetty-adapter "1.9.5"]
                  [ring/ring-json "0.5.1"]
-                 [ring-cors "0.1.13"]]
+                 [ring-cors "0.1.13"]
+                 [environ "1.2.0"]
+                 ;;clodinary
+                 [com.cloudinary/cloudinary-core "1.36.0"]
+                 [com.cloudinary/cloudinary-http44 "1.36.0"]
+                 [com.cloudinary/cloudinary-taglib "1.36.0"]
+                 ]
   :main ^:skip-aot spooky-town-admin.core
   :target-path "target/%s"
   :profiles {:uberjar {:aot :all
