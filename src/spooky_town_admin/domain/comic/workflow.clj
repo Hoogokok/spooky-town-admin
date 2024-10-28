@@ -1,7 +1,8 @@
 (ns spooky-town-admin.domain.comic.workflow
   (:require [spooky-town-admin.domain.common.result :as r]
             [spooky-town-admin.domain.comic.types :as types]
-            [spooky-town-admin.domain.comic.errors :as errors])
+            [spooky-town-admin.domain.comic.errors :as errors]
+            [spooky-town-admin.infrastructure.image-storage :as image-storage])
   (:import [javax.imageio ImageIO]))
 
 (defn extract-image-metadata [image-data]
@@ -42,26 +43,47 @@
                                         (errors/get-image-error-message (:error-type failed-constraint))))
         (r/success image)))))
 
-(defn process-image [{:keys [cover-image] :as comic-data}]
-  (if cover-image
-    (if-let [metadata (extract-image-metadata cover-image)]
-      (-> metadata
-          validate-image-constraints
-          (r/bind #(r/success (assoc comic-data :cover-image-metadata %))))
-      (r/failure (errors/validation-error :cover-image 
-                                      (errors/get-image-error-message :invalid))))
-    (r/success comic-data)))
+(defn process-and-store-image [image-storage image-data]
+  (if image-data
+    (if-let [metadata (extract-image-metadata image-data)]
+      (-> (validate-image-constraints metadata)
+          (r/bind (fn [validated-metadata]
+                   (-> (image-storage/store-image image-storage image-data)
+                       (r/map (fn [result]
+                               {:cover-image-metadata validated-metadata
+                                :cover-image-url (:url result)}))))))
+      (r/failure {:field :cover-image 
+                  :message (errors/get-image-error-message :invalid)}))
+    (r/success nil)))
 
-(defn create-comic-workflow [comic-data]
+(defn create-comic-workflow [image-storage comic-data]
   (-> (r/success comic-data)
       (r/bind #(types/create-unvalidated-comic %))
-      (r/bind process-image)
-      (r/bind #(types/create-validated-comic %))
-      (r/map #(do (types/create-comic-validated %) %))
-      (r/map (fn [validated-comic]
-               (when-let [metadata (:cover-image-metadata validated-comic)]
-                 (types/create-image-uploaded metadata))
-               validated-comic))))
+      ;; 만화 정보 검증
+      (r/bind (fn [unvalidated]
+                (-> (types/create-validated-comic 
+                      (dissoc unvalidated :cover-image))
+                    (r/map (fn [validated]
+                            {:comic validated
+                             :events [(types/create-comic-validated validated)]})))))
+      ;; 이미지 처리
+      (r/bind (fn [{:keys [comic events]}]
+                (-> (process-and-store-image image-storage (:cover-image comic-data))
+                    (r/map (fn [image-result]
+                            (if image-result
+                              (let [comic-with-image (assoc comic 
+                                                          :cover-image-metadata 
+                                                          (:cover-image-metadata image-result))]
+                                {:comic comic-with-image
+                                 :image-url (:cover-image-url image-result)
+                                 :events (concat events
+                                               [(types/create-image-uploaded 
+                                                  (:cover-image-metadata image-result))
+                                                (types/create-image-stored 
+                                                  comic-with-image 
+                                                  (:cover-image-url image-result))])})
+                              {:comic comic
+                               :events events}))))))))
 
 ;; 만화 수정 워크플로우 (향후 구현)
 (defn update-comic-workflow [id comic-data]
