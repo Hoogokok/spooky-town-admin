@@ -23,6 +23,7 @@
                  ;;migratus 마이그레이션 라이브러리
                  [migratus "1.5.6"]
                  [org.slf4j/slf4j-log4j12 "2.0.12"] ;; migratus의 로깅 의존성
+                 [com.zaxxer/HikariCP "5.1.0"] ;; 데이터소스 풀링 라이브러리
                  ]
   :main ^:skip-aot spooky-town-admin.core
   :target-path "target/%s"
