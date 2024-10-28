@@ -52,8 +52,8 @@
                        (r/map (fn [result]
                                {:cover-image-metadata validated-metadata
                                 :cover-image-url (:url result)}))))))
-      (r/failure {:field :cover-image 
-                  :message (errors/get-image-error-message :invalid)}))
+      (r/failure (errors/validation-error :cover-image 
+                                        (errors/get-image-error-message :invalid))))
     (r/success nil)))
 
 (defn create-comic-workflow [image-storage comic-data]
