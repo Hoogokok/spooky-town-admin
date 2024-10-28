@@ -6,36 +6,42 @@
             [spooky-town-admin.infrastructure.persistence.protocol :refer [ComicRepository]]
             [spooky-town-admin.domain.comic.errors :as errors]
             [spooky-town-admin.domain.common.result :as r]
+            [spooky-town-admin.infrastructure.persistence.config :as config]
             [clojure.string :as str]))
 
-(def db-spec
-  {:dbtype "postgresql"
-   :dbname (or (System/getenv "DB_NAME") "spooky_town")
-   :host (or (System/getenv "DB_HOST") "localhost")
-   :port (or (System/getenv "DB_PORT") 5432)
-   :user (or (System/getenv "DB_USER") "postgres")
-   :password (or (System/getenv "DB_PASSWORD") "postgres")})
-
-(def ds (jdbc/get-datasource db-spec))
-
+;; 도메인 객체를 DB 레코드로 변환
 (defn- comic->db [comic]
-  (-> comic
-      (update :title str)
-      (update :artist str)
-      (update :author str)
-      (update :isbn13 str)
-      (update :isbn10 str)))
+  (cond-> {}
+    (:title comic) (assoc :title (str (:title comic)))
+    (:artist comic) (assoc :artist (str (:artist comic)))
+    (:author comic) (assoc :author (str (:author comic)))
+    (:isbn13 comic) (assoc :isbn13 (str (:isbn13 comic)))
+    (:isbn10 comic) (assoc :isbn10 (str (:isbn10 comic)))
+    (:publication_date comic) (assoc :publication_date (:publication_date comic))
+    (:publisher comic) (assoc :publisher (str (:publisher comic)))
+    (:price comic) (assoc :price (:price comic))
+    (:page_count comic) (assoc :page_count (:page_count comic))
+    (:description comic) (assoc :description (str (:description comic)))
+    (:image_url comic) (assoc :image_url (str (:image_url comic)))))
 
+;; DB 레코드를 도메인 객체로 변환
 (defn- db->comic [row]
   (when row
-    (-> row
-        (update :title str)
-        (update :artist str)
-        (update :author str)
-        (update :isbn13 str)
-        (update :isbn10 str))))
+    (cond-> {}
+      (:id row) (assoc :id (:id row))
+      (:title row) (assoc :title (:title row))
+      (:artist row) (assoc :artist (:artist row))
+      (:author row) (assoc :author (:author row))
+      (:isbn13 row) (assoc :isbn13 (:isbn13 row))
+      (:isbn10 row) (assoc :isbn10 (:isbn10 row))
+      (:publication_date row) (assoc :publication_date (:publication_date row))
+      (:publisher row) (assoc :publisher (:publisher row))
+      (:price row) (assoc :price (:price row))
+      (:page_count row) (assoc :page_count (:page_count row))
+      (:description row) (assoc :description (:description row))
+      (:image_url row) (assoc :image_url (:image_url row)))))
 
-(defrecord PostgresqlComicRepository []
+(defrecord PostgresqlComicRepository [datasource]
   ComicRepository
   (save-comic [_ comic]
     (try
@@ -43,7 +49,7 @@
             query {:insert-into :comics
                   :values [comic-data]
                   :returning :*}
-            result (jdbc/execute-one! ds (sql/format query)
+            result (jdbc/execute-one! datasource (sql/format query)
                                     {:builder-fn rs/as-unqualified-maps})]
         (r/success {:id (:id result)}))
       (catch Exception e
@@ -57,7 +63,7 @@
       (let [query {:select :*
                    :from :comics
                    :where [:= :id id]}
-            result (jdbc/execute-one! ds (sql/format query)
+            result (jdbc/execute-one! datasource (sql/format query)
                                     {:builder-fn rs/as-unqualified-maps})]
         (if result
           (r/success (db->comic result))
@@ -77,7 +83,7 @@
                    :where [:or
                           [:= :isbn13 isbn]
                           [:= :isbn10 isbn]]}
-            result (jdbc/execute-one! ds (sql/format query)
+            result (jdbc/execute-one! datasource (sql/format query)
                                     {:builder-fn rs/as-unqualified-maps})]
         (if result
           (r/success (db->comic result))
@@ -92,7 +98,7 @@
     (try
       (let [query {:delete-from :comics
                    :where [:= :id id]}]
-        (jdbc/execute-one! ds (sql/format query))
+        (jdbc/execute-one! datasource (sql/format query))
         {:success true})
       (catch Exception e
         {:success false
@@ -102,11 +108,11 @@
 
   (list-comics [_]
     (try
-      (->> (jdbc/execute! ds (sql/format {:select :* :from :comics})
+      (->> (jdbc/execute! datasource (sql/format {:select :* :from :comics})
                          {:builder-fn rs/as-unqualified-maps})
            (map db->comic))
       (catch Exception _
         []))))
 
 (defn create-repository []
-  (->PostgresqlComicRepository))
+  (->PostgresqlComicRepository @config/datasource))

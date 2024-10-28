@@ -20,6 +20,9 @@
                  [org.postgresql/postgresql "42.7.2"]
                  [com.github.seancorfield/next.jdbc "1.3.925"]
                  [com.github.seancorfield/honeysql "2.5.1103"]
+                 ;;migratus 마이그레이션 라이브러리
+                 [migratus "1.5.6"]
+                 [org.slf4j/slf4j-log4j12 "2.0.12"] ;; migratus의 로깅 의존성
                  ]
   :main ^:skip-aot spooky-town-admin.core
   :target-path "target/%s"
