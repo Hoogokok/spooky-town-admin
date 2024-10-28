@@ -23,7 +23,7 @@
                  ;;migratus 마이그레이션 라이브러리
                  [migratus "1.5.6"]
                  [hikari-cp "3.0.1"]            ;; hikari-cp 추가
-                 
+
                  [org.slf4j/slf4j-log4j12 "2.0.12"] ;; migratus의 로깅 의존성
                  [com.zaxxer/HikariCP "5.1.0"] ;; 데이터소스 풀링 라이브러리
                  ;; testcontainers 테스트 데이터베이스 라이브러리
@@ -36,8 +36,12 @@
   :main ^:skip-aot spooky-town-admin.core
   :target-path "target/%s"
   :profiles {:dev {:dependencies [[org.slf4j/slf4j-log4j12 "2.0.12"]
-                               [log4j/log4j "1.2.17"]]
-                 :resource-paths ["resources" "test/resources"]}
-           :test {:dependencies [[org.slf4j/slf4j-log4j12 "2.0.12"]
-                                [log4j/log4j "1.2.17"]]
-                  :resource-paths ["resources" "test/resources"]}})
+                                  [log4j/log4j "1.2.17"]]
+                   :env {:environment "dev"}
+                   :resource-paths ["resources" "test/resources"]}
+             :test {:dependencies [[org.slf4j/slf4j-log4j12 "2.0.12"]
+                                   [log4j/log4j "1.2.17"]]
+                    :resource-paths ["resources" "test/resources"]
+                    :env {:environment "test"}}
+             :prod {:env {:environment "prod"}}}
+  :plugins [[lein-environ "1.2.0"]])  ;; environ 플러그인 추가 
