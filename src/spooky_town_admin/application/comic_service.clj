@@ -86,5 +86,5 @@
 ;; 서비스 인스턴스 생성
 (defn create-comic-service [env config]
   (->ComicService 
-   (persistence/create-comic-repository)
+   (persistence/create-comic-repository env)
    (image-storage/create-image-storage env config)))
