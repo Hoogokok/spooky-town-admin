@@ -1,21 +1,30 @@
 (ns spooky-town-admin.application.comic-service
-  (:require [spooky-town-admin.domain.comic.workflow :as workflow]
-            [spooky-town-admin.domain.comic.errors :as errors]
-            [spooky-town-admin.domain.comic.types :as types]
-            [spooky-town-admin.infrastructure.image-storage :as image-storage]
-            [spooky-town-admin.infrastructure.persistence :as persistence]
-            [spooky-town-admin.domain.common.result :as r]))
-
+  (:require
+   [next.jdbc.connection :as connection]
+   [spooky-town-admin.domain.comic.errors :as errors]
+   [spooky-town-admin.domain.comic.workflow :as workflow]
+   [spooky-town-admin.domain.common.result :as r]
+   [spooky-town-admin.infrastructure.image-storage :as image-storage]
+   [spooky-town-admin.infrastructure.persistence :as persistence]
+   [spooky-town-admin.infrastructure.persistence.transaction :refer [with-transaction]]))
 
 (defrecord ComicService [comic-repository image-storage])
 ;; 만화 생성 관련 함수들
 (defn- check-duplicate-isbn [comic-repository comic-data]
-  (if-let [existing-comic (persistence/find-comic-by-isbn 
-                          comic-repository 
-                          (or (:isbn13 comic-data) (:isbn10 comic-data)))]
-    (r/failure (errors/business-error :duplicate-isbn 
-                                    (errors/get-business-message :duplicate-isbn)))
-    (r/success comic-data)))
+  (println "Checking duplicate ISBN for:" comic-data)
+  (let [isbn (or (:isbn13 comic-data) (:isbn10 comic-data))
+        result (persistence/find-comic-by-isbn comic-repository isbn)]
+    (println "ISBN check result:" result)
+    (if (and (r/success? result) 
+             (some? (r/value result)))  ;; 이제 r/value 함수 사용 가능
+      (do
+        (println "Duplicate ISBN found")
+        (r/failure (errors/business-error 
+                    :duplicate-isbn 
+                    (errors/get-business-message :duplicate-isbn))))
+      (do
+        (println "No duplicate ISBN found")
+        (r/success comic-data)))))
 
 (defn- save-comic [comic-repository comic image-url]
   (try
@@ -33,19 +42,13 @@
                                     (errors/get-system-message :db-error)
                                     (.getMessage e))))))
 
-(defn create-comic [{:keys [comic-repository image-storage]} comic-data]
-  (-> (persistence/with-transaction
-        (-> (r/success comic-data)
-            (r/bind #(check-duplicate-isbn comic-repository %))
-            (r/bind #(workflow/create-comic-workflow image-storage %))
-            (r/bind (fn [{:keys [comic events image-url]}]
-                     (-> (save-comic comic-repository comic image-url)
-                         (r/map (fn [persisted]
-                                 {:id (:id persisted)
-                                  :events (conj events 
-                                              (types/create-comic-persisted persisted))})))))))
-      (r/map #(select-keys % [:id]))
-      r/to-map))
+(defn create-comic [{:keys [comic-repository image-storage] :as service} comic-data]
+  (with-transaction
+    (println "Transaction started" (pr-str comic-data))
+    (-> (check-duplicate-isbn comic-repository comic-data)
+        (r/bind #(workflow/create-comic-workflow image-storage %))
+        (r/bind (fn [{:keys [comic]}]
+                  (persistence/save-comic comic-repository comic))))))
 
 ;; 만화 조회 서비스
 (defn get-comic [{:keys [comic-repository]} id]
@@ -64,7 +67,7 @@
                   comics)}))
 
 ;; 서비스 인스턴스 생성
-(defn create-comic-service [env config]
+(defn create-comic-service [env]
   (->ComicService 
-   (persistence/create-comic-repository env)
-   (image-storage/create-image-storage env config)))
+   (persistence/create-comic-repository)
+   (image-storage/create-image-storage env )))

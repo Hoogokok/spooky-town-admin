@@ -1,78 +1,62 @@
 (ns spooky-town-admin.infrastructure.persistence.config
   (:require [next.jdbc :as jdbc]
-            [migratus.core :as migratus]
+            [next.jdbc.connection :as connection]
+            [hikari-cp.core :as hikari]
             [spooky-town-admin.domain.common.result :as r]
-            [spooky-town-admin.domain.comic.errors :as errors])
-  (:import [com.zaxxer.hikari HikariConfig HikariDataSource]))
+            [spooky-town-admin.domain.comic.errors :as errors]
+            [migratus.core :as migratus]
+            [environ.core :refer [env]])
+  (:import (com.zaxxer.hikari HikariDataSource)))
 
-(def db-config
+(def ^:private datasource (atom nil))
+
+(def db-spec
   {:dbtype "postgresql"
-   :dbname (or (System/getenv "POSTGRES_DB") "spooky_town")
-   :host (or (System/getenv "POSTGRES_HOST") "localhost")
-   :port (or (parse-long (or (System/getenv "POSTGRES_PORT") "5432")) 5432)
-   :user (or (System/getenv "POSTGRES_USER") "postgres")
-   :password (or (System/getenv "POSTGRES_PASSWORD") "postgres")})
-
-(def pool-config
-  {:minimum-idle 5
-   :maximum-pool-size 10
-   :idle-timeout 300000  ; 5 minutes
-   :max-lifetime 1200000 ; 20 minutes
-   :connection-timeout 30000  ; 30 seconds
-   :validation-timeout 5000}) ; 5 seconds
+   :dbname (or (env :postgres-db) "postgres")
+   :host (or (env :postgres-host) "localhost")
+   :port (or (env :postgres-port) 5432)
+   :user (or (env :postgres-user) "postgres")
+   :password (or (env :postgres-password) "postgres")})
 
 (defn- create-datasource []
-  (let [config (doto (HikariConfig.)
-                (.setJdbcUrl (str "jdbc:postgresql://"
-                                 (:host db-config) ":"
-                                 (:port db-config) "/"
-                                 (:dbname db-config)))
-                (.setUsername (:user db-config))
-                (.setPassword (:password db-config))
-                (.setMinimumIdle (:minimum-idle pool-config))
-                (.setMaximumPoolSize (:maximum-pool-size pool-config))
-                (.setIdleTimeout (:idle-timeout pool-config))
-                (.setMaxLifetime (:max-lifetime pool-config))
-                (.setConnectionTimeout (:connection-timeout pool-config))
-                (.setValidationTimeout (:validation-timeout pool-config))
-                ;; 연결 테스트 쿼리 설정
-                (.setConnectionTestQuery "SELECT 1")
-                ;; 풀 이름 설정
-                (.setPoolName "spooky-town-pool"))]
-    (HikariDataSource. config)))
+  (let [config {:adapter "postgresql"
+                :database-name (:dbname db-spec)
+                :server-name (:host db-spec)
+                :port-number (:port db-spec)
+                :username (:user db-spec)
+                :password (:password db-spec)
+                :maximum-pool-size 10
+                :pool-name "spooky-town-pool"}]
+    (hikari/make-datasource config)))
 
-(def migration-config
+(def migratus-config
   {:store :database
-   :migration-dir "migrations/postgresql"
-   :db db-config})
+   :migration-dir "db/migrations"  ;; resources는 자동으로 클래스패스에 포함됨
+   :db db-spec})
+
 
 (defn init-db! []
-  (try
-    (let [ds (create-datasource)]
-      (migratus/init migration-config)
-      (migratus/migrate migration-config)
-      (r/success ds))
-    (catch Exception e
-      (r/failure 
-        (errors/system-error 
-          :db-init-error
-          "데이터베이스 초기화 실패"
-          (.getMessage e))))))
+  (when-not @datasource
+    (let [ds (connection/->pool HikariDataSource db-spec)]
+      (reset! datasource ds)
+      ;; 마이그레이션 실행
+      (try
+        (println "Running database migrations...")
+        (migratus/migrate migratus-config)
+        (println "Migrations completed successfully")
+        (catch Exception e
+          (println "Migration error:" (.getMessage e))
+          (.printStackTrace e))))))
 
-(def datasource
-  (delay
-    (-> (init-db!)
-        (r/bind (fn [ds]
-                  (if ds
-                    (r/success ds)
-                    (r/failure 
-                      (errors/system-error 
-                        :db-connection-error
-                        "데이터베이스 연결 실패"
-                        "데이터소스 생성 실패"))))))))
+(defn get-datasource []
+  @datasource)
 
-;; 애플리케이션 종료 시 연결 풀 정리를 위한 함수
-(defn shutdown-datasource! []
+(defn close-datasource! []
   (when-let [ds @datasource]
-    (when (instance? HikariDataSource ds)
-      (.close ds))))
+    (.close ^HikariDataSource ds)
+    (reset! datasource nil)))
+
+(def ^:dynamic *current-tx* nil)
+
+(defn get-current-tx []
+  *current-tx*)

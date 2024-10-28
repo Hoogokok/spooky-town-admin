@@ -12,18 +12,20 @@
 (defn success? [result]
   (:success result))
 
+(defn value [result]
+  (:value result))
+
+(defn error [result]
+  (:error result))
+
 (defn bind [result f]
   (if (success? result)
-    (f (:value result))
+    (f (value result))
     result))
 
-(defn map
-  "Result 모나드의 값을 변환하는 함수
-   result: Result 인스턴스
-   f: 변환 함수"
-  [result f]  ;; 파라미터 순서 명확히 지정
+(defn map [result f]
   (if (success? result)
-    (success (f (:value result)))
+    (success (f (value result)))
     result))
 
 (defn map-error [result f]

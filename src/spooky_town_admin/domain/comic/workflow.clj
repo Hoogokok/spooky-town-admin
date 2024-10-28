@@ -6,82 +6,104 @@
   (:import [javax.imageio ImageIO]))
 
 (defn extract-image-metadata [image-data]
+  (println "Starting metadata extraction for image:" 
+           (select-keys image-data [:filename :content-type]))
   (when image-data
     (try
       (let [temp-file (:tempfile image-data)]
-        (if (and temp-file (.exists temp-file))
-          (let [input-stream (ImageIO/createImageInputStream temp-file)
-                readers (ImageIO/getImageReaders input-stream)]
-            (if (.hasNext readers)
-              (let [reader (.next readers)]
-                (.setInput reader input-stream)
-                (let [buffered-image (.read reader 0)]
-                  {:content-type (:content-type image-data)
-                   :size (:size image-data)
-                   :width (.getWidth buffered-image)
-                   :height (.getHeight buffered-image)}))
-              nil))
-          nil))
-      (catch Exception _ nil))))
-
-(defn validate-image-constraints [image]
-  (if (or (nil? image)
-          (nil? (:width image))
-          (nil? (:height image)))
-    (r/failure (errors/validation-error :cover-image 
-                                    (errors/get-image-error-message :invalid)))
-    (let [constraints [{:check #(contains? types/allowed-image-types (:content-type %))
-                       :error-type :type}
-                      {:check #(>= types/max-dimension (max (:width %) (:height %)))
-                       :error-type :dimensions}
-                      {:check #(>= types/max-area (* (:width %) (:height %)))
-                       :error-type :area}
-                      {:check #(>= types/max-file-size (:size %))
-                       :error-type :size}]]
-      (if-let [failed-constraint (first (filter #(not ((:check %) image)) constraints))]
-        (r/failure (errors/validation-error :cover-image 
-                                        (errors/get-image-error-message (:error-type failed-constraint))))
-        (r/success image)))))
+        (println "Checking temp file:" 
+                 {:exists? (and temp-file (.exists temp-file))
+                  :path (.getAbsolutePath temp-file)
+                  :size (.length temp-file)})
+        (if (and temp-file 
+                 (.exists temp-file)
+                 (pos? (.length temp-file)))  ;; 파일 크기 체크 추가
+          (let [input-stream (ImageIO/createImageInputStream temp-file)]
+            (println "Created ImageInputStream")
+            (let [readers (ImageIO/getImageReaders input-stream)]
+              (println "Got image readers, has next?" (.hasNext readers))
+              (if (.hasNext readers)
+                (let [reader (.next readers)]
+                  (println "Using reader:" (.getClass reader))
+                  (.setInput reader input-stream)
+                  (let [buffered-image (.read reader 0)]
+                    (println "Successfully read image")
+                    (let [metadata {:content-type (:content-type image-data)
+                                  :size (.length temp-file)
+                                  :width (.getWidth buffered-image)
+                                  :height (.getHeight buffered-image)}]
+                      (println "Extracted metadata:" metadata)
+                      metadata)))
+                (do
+                  (println "No suitable image reader found")
+                  nil))))
+          (do
+            (println "File validation failed:" 
+                     {:exists? (.exists temp-file)
+                      :size (.length temp-file)})
+            nil)))
+      (catch Exception e
+        (println "Error during metadata extraction:" 
+                 {:message (.getMessage e)
+                  :type (.getName (.getClass e))})
+        (.printStackTrace e)
+        nil))))
 
 (defn process-and-store-image [image-storage image-data]
+  (println "Starting image processing with data:" 
+           (select-keys image-data [:filename :content-type :size]))
   (if image-data
-    (if-let [metadata (extract-image-metadata image-data)]
-      (-> (validate-image-constraints metadata)
-          (r/bind (fn [validated-metadata]
-                   (-> (image-storage/store-image image-storage image-data)
-                       (r/map (fn [result]
-                               {:cover-image-metadata validated-metadata
-                                :cover-image-url (:url result)}))))))
-      (r/failure (errors/validation-error :cover-image 
-                                        (errors/get-image-error-message :invalid))))
-    (r/success nil)))
+    (let [metadata (extract-image-metadata image-data)]
+      (println "Extracted image metadata:" metadata)
+      (if metadata
+        (-> (types/validate-image-metadata metadata)
+            (r/bind (fn [validated-metadata]
+                     (println "Image validation successful:" validated-metadata)
+                     (-> (image-storage/store-image image-storage image-data)
+                         (r/map (fn [result]
+                                (println "Raw storage result:" (pr-str result))
+                                (let [response {:cover-image-metadata validated-metadata
+                                              :cover-image-url (:url result)}]
+                                  (println "Processed storage result:" (pr-str response))
+                                  response)))))))
+        (do
+          (println "Failed to extract image metadata")
+          (r/failure (errors/validation-error :cover-image 
+                                            (errors/get-image-error-message :invalid))))))
+    (do
+      (println "No image data provided")
+      (r/success nil))))
 
-(defn create-comic-workflow [image-storage comic-data]
+(^:export defn create-comic-workflow [image-storage comic-data]
+  (println "Starting comic workflow with data:" comic-data)
   (-> (r/success comic-data)
       (r/bind #(types/create-unvalidated-comic %))
       ;; 만화 정보 검증
       (r/bind (fn [unvalidated]
+                (println "Validating comic data:" unvalidated)
                 (-> (types/create-validated-comic 
-                      (dissoc unvalidated :cover-image))
+                     (dissoc unvalidated :cover-image))
                     (r/map (fn [validated]
                             {:comic validated
                              :events [(types/create-comic-validated validated)]})))))
       ;; 이미지 처리
       (r/bind (fn [{:keys [comic events]}]
+                (println "Processing image for comic:" comic)
                 (-> (process-and-store-image image-storage (:cover-image comic-data))
                     (r/map (fn [image-result]
                             (if image-result
-                              (let [comic-with-image (assoc comic 
-                                                          :cover-image-metadata 
-                                                          (:cover-image-metadata image-result))]
+                              (let [comic-with-image (-> comic
+                                                       (assoc :cover-image-metadata 
+                                                             (:cover-image-metadata image-result))
+                                                       (assoc :cover-image-url 
+                                                             (:cover-image-url image-result)))]
                                 {:comic comic-with-image
-                                 :image-url (:cover-image-url image-result)
                                  :events (concat events
                                                [(types/create-image-uploaded 
-                                                  (:cover-image-metadata image-result))
+                                                 (:cover-image-metadata image-result))
                                                 (types/create-image-stored 
-                                                  comic-with-image 
-                                                  (:cover-image-url image-result))])})
+                                                 comic-with-image 
+                                                 (:cover-image-url image-result))])})
                               {:comic comic
                                :events events}))))))))
 

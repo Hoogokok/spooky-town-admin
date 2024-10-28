@@ -6,12 +6,12 @@
 
 (defn create-comic-repository
   "환경에 따른 저장소 인스턴스 생성"
-  [env]
-  (case env
+  []
+  (case (keyword (or (System/getenv "ENVIRONMENT") "dev"))
     :test (in-memory/create-repository)
     :prod (postgresql/create-repository)
     ;; 기본값은 인메모리 저장소
-    (in-memory/create-repository)))
+    (postgresql/create-repository)))
 
 ;; 프로토콜 메서드를 외부에서 호출할 수 있는 함수들
 (defn save-comic [repo comic]
@@ -28,6 +28,3 @@
 
 (defn list-comics [repo]
   (protocol/list-comics repo))
-
-;; with-transaction 매크로 재익스포트
-(def with-tx with-transaction)

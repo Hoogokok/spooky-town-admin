@@ -56,21 +56,34 @@
   (store-image [_ image-data]
     (try
       (let [temp-file (:tempfile image-data)
+            _ (println "Uploading file:" {:name (:filename image-data)
+                                        :size (.length temp-file)})
             options (ObjectUtils/asMap (to-array
-                     ["resource_type" "auto"
+                     ["resource_type" "image"
                       "unique_filename" true
-                      "overwrite" false]))
+                      "overwrite" false
+                      "use_filename" true  
+                      "folder" "comics"    
+                      "type" "upload"]))   
+            _ (println "Upload options:" (pr-str (into {} options)))
             uploader (.uploader cloudinary)
             upload-result (.upload uploader temp-file options)
-            public-id (.get upload-result "public_id")]
-        (r/success
-          {:image-id public-id
-           :metadata {:width (.get upload-result "width")
-                     :height (.get upload-result "height")
-                     :content-type (str "image/" (.get upload-result "format"))
-                     :size (.get upload-result "bytes")
-                     :url (.get upload-result "secure_url")}}))
+            _ (println "Raw Cloudinary response:" (pr-str (into {} upload-result)))
+            public-id (.get upload-result "public_id")
+            secure-url (.get upload-result "secure_url")  ;; secure_url 직접 추출
+            _ (println "Extracted values:" {:public-id public-id
+                                          :secure-url secure-url})
+            response {:image-id public-id
+                     :metadata {:width (.get upload-result "width")
+                              :height (.get upload-result "height")
+                              :content-type (str "image/" (.get upload-result "format"))
+                              :size (.get upload-result "bytes")}
+                     :url secure-url}]  ;; secure_url 사용
+        (println "Final formatted response:" (pr-str response))
+        (r/success response))
       (catch Exception e
+        (println "Cloudinary upload error:" (.getMessage e))
+        (.printStackTrace e)  ;; 스택 트레이스 출력 추가
         (r/failure (errors/system-error
                     :image-upload-error
                     (errors/get-system-message :image-upload-error)
@@ -103,12 +116,14 @@
   (->MockCDNImageStorage))
 
 (defn create-cloudinary-storage []
-  (->CloudinaryImageStorage (cloud-config/create-cloudinary)))
+  (let [cloudinary (cloud-config/create-cloudinary)]
+    (println "Created Cloudinary instance:" (class cloudinary))
+    (->CloudinaryImageStorage cloudinary)))
 
 ;; 환경에 따른 저장소 생성
-(defn create-image-storage [env config]
+(defn create-image-storage [env]
   (case env
     :test (create-mock-image-storage)
     :prod (create-cloudinary-storage)
     ;; 기본값은 mock 저장소
-    (create-mock-image-storage)))
+    (create-cloudinary-storage)))
