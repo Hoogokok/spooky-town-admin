@@ -208,6 +208,7 @@
 ;; --------- 도메인 이벤트 ---------
 (defrecord ComicValidated [validated-comic timestamp])
 (defrecord ImageUploaded [image-metadata timestamp])
+(defrecord ImageStored [comic-data image-url timestamp])  
 (defrecord ComicPersisted [persisted-comic timestamp])
 
 ;; --------- 도메인 이벤트 생성 함수들 ---------
@@ -216,6 +217,9 @@
 
 (defn create-image-uploaded [image-metadata]
   (->ImageUploaded image-metadata (java.time.Instant/now)))
+
+(defn create-image-stored [comic-data image-url]  
+  (->ImageStored comic-data image-url (java.time.Instant/now)))
 
 (defn create-comic-persisted [persisted-comic]
   (->ComicPersisted persisted-comic (java.time.Instant/now)))
