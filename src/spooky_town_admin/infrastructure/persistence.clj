@@ -1,7 +1,8 @@
 (ns spooky-town-admin.infrastructure.persistence
   (:require [spooky-town-admin.infrastructure.persistence.protocol :as protocol]
             [spooky-town-admin.infrastructure.persistence.in-memory :as in-memory]
-            [spooky-town-admin.infrastructure.persistence.postgresql :as postgresql]))
+            [spooky-town-admin.infrastructure.persistence.postgresql :as postgresql]
+            [spooky-town-admin.infrastructure.persistence.transaction :refer [with-transaction]]))
 
 (defn create-comic-repository
   "환경에 따른 저장소 인스턴스 생성"
@@ -28,6 +29,5 @@
 (defn list-comics [repo]
   (protocol/list-comics repo))
 
-;; 트랜잭션 관리 (향후 실제 DB 사용 시 확장)
-(defmacro with-transaction [& body]
-  `(do ~@body))
+;; with-transaction 매크로 재익스포트
+(def with-tx with-transaction)
