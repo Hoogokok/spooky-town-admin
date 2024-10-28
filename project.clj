@@ -16,6 +16,10 @@
                  [com.cloudinary/cloudinary-core "1.36.0"]
                  [com.cloudinary/cloudinary-http44 "1.36.0"]
                  [com.cloudinary/cloudinary-taglib "1.36.0"]
+                 ;;postgesql
+                 [org.postgresql/postgresql "42.7.2"]
+                 [com.github.seancorfield/next.jdbc "1.3.925"]
+                 [com.github.seancorfield/honeysql "2.5.1103"]
                  ]
   :main ^:skip-aot spooky-town-admin.core
   :target-path "target/%s"
