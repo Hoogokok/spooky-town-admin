@@ -1,10 +1,11 @@
 (ns spooky-town-admin.domain.comic.types
-  (:require [clojure.spec.alpha :as s]
-            [spooky-town-admin.domain.common.result :refer [success failure]]
-            [spooky-town-admin.domain.comic.errors :refer [validation-error 
-                                                          business-error
-                                                          get-validation-message
-                                                          get-image-error-message]]))
+  (:require
+   [clojure.spec.alpha :as s]
+   [spooky-town-admin.infrastructure.monad.result :refer [success failure]]
+   [spooky-town-admin.domain.comic.errors :refer [validation-error
+                                                  business-error
+                                                  get-validation-message
+                                                  get-image-error-message]]))
 
 ;; --------- 유효성 검사 헬퍼 함수들 ---------
 (defn- calculate-isbn13-checksum [isbn]

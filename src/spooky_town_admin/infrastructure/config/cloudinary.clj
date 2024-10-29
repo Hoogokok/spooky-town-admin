@@ -1,6 +1,6 @@
 (ns spooky-town-admin.infrastructure.config.cloudinary
   (:require [environ.core :refer [env]]
-            [spooky-town-admin.domain.common.result :as r]
+            [spooky-town-admin.infrastructure.monad.result :as r]
             [spooky-town-admin.domain.comic.errors :as errors])
   (:import [com.cloudinary Cloudinary]
            [com.cloudinary.utils ObjectUtils]))

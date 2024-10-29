@@ -4,7 +4,8 @@
             [spooky-town-admin.domain.comic.types :as types]
             [spooky-town-admin.infrastructure.image-storage :as image-storage]
             [spooky-town-admin.infrastructure.persistence :as persistence]
-            [spooky-town-admin.domain.common.result :as r]))
+            [spooky-town-admin.infrastructure.monad.result :as r]
+            ))
 
 
 (defrecord ComicService [comic-repository image-storage])

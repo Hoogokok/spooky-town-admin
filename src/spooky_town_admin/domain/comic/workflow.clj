@@ -1,5 +1,5 @@
 (ns spooky-town-admin.domain.comic.workflow
-  (:require [spooky-town-admin.domain.common.result :as r]
+  (:require [spooky-town-admin.infrastructure.monad.result :as r]
             [spooky-town-admin.domain.comic.types :as types]
             [spooky-town-admin.domain.comic.errors :as errors]
             [spooky-town-admin.infrastructure.image-storage :as image-storage])

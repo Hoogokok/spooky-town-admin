@@ -1,6 +1,6 @@
 (ns spooky-town-admin.infrastructure.image-storage
   (:require [spooky-town-admin.domain.comic.errors :as errors]
-            [spooky-town-admin.domain.common.result :as r]
+           [spooky-town-admin.infrastructure.monad.result :as r]
             [spooky-town-admin.infrastructure.config.cloudinary :as cloud-config]
             [clojure.java.io :as io])
   (:import [java.io File]

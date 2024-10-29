@@ -1,15 +1,17 @@
 (ns spooky-town-admin.application.comic-service-test
-  (:require [clojure.test :refer [deftest testing is use-fixtures]]
-            [spooky-town-admin.application.comic-service :as service]
-            [spooky-town-admin.infrastructure.persistence :as persistence]
-            [spooky-town-admin.infrastructure.persistence.in-memory :as in-memory]  ;; 추가
-            [spooky-town-admin.infrastructure.image-storage :as image-storage]
-            [spooky-town-admin.domain.common.result :as r]
-            [spooky-town-admin.domain.comic.workflow :as workflow]
-            [spooky-town-admin.domain.comic.errors :as errors])
-  (:import [java.io File]
-           [javax.imageio ImageIO]
-           [java.awt.image BufferedImage]))
+  (:require
+   [clojure.test :refer [deftest is testing use-fixtures]]
+   [spooky-town-admin.application.comic-service :as service]
+   [spooky-town-admin.domain.comic.errors :as errors]
+   [spooky-town-admin.domain.comic.workflow :as workflow]
+   [spooky-town-admin.infrastructure.image-storage :as image-storage]
+   [spooky-town-admin.infrastructure.monad.result :as r]
+   [spooky-town-admin.infrastructure.persistence.in-memory :as in-memory] ;; 추가
+)
+  (:import
+   [java.awt.image BufferedImage]
+   [java.io File]
+   [javax.imageio ImageIO]))
 
 ;; Mock 이미지 저장소
 (defrecord MockImageStorage []

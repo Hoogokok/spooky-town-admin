@@ -1,8 +1,8 @@
 (ns spooky-town-admin.domain.comic.types-test
-  (:require [clojure.test :refer [deftest testing is]]
-            [spooky-town-admin.domain.comic.types :as types]
-            [spooky-town-admin.domain.common.result :refer [success? success failure]]
-            [spooky-town-admin.domain.comic.errors :refer [validation-error]]))
+  (:require
+   [clojure.test :refer [deftest is testing]]
+   [spooky-town-admin.domain.comic.types :as types]
+   [spooky-town-admin.infrastructure.monad.result :refer [success?]]))
 
 (deftest value-objects-test
   (testing "ISBN-13 생성"
