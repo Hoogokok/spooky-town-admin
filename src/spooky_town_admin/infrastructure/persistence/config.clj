@@ -37,7 +37,7 @@
 
 (def migratus-config
   {:store :database
-   :migration-dir "db/migrations"  ;; resources는 자동으로 클래스패스에 포함됨
+   :migration-dir "db/migrations/productions"  ;; resources는 자동으로 클래스패스에 포함됨
    :db db-spec})
 
 
