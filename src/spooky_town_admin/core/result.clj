@@ -12,6 +12,9 @@
 (defn success? [result]
   (:success result))
 
+(defn failure? [result]
+  (not (:success result)))
+
 (defn value [result]
   (:value result))
 

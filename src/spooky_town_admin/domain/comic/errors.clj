@@ -34,7 +34,10 @@
    :business
    {:duplicate-isbn "이미 존재하는 ISBN입니다."
     :invalid-publication-date "출판일은 미래일 수 없습니다."
-    :invalid-cover-image "표지 이미지가 요구사항을 충족하지 않습니다."}
+    :invalid-cover-image "표지 이미지가 요구사항을 충족하지 않습니다."
+    :duplicate-publisher "이미 등록된 출판사입니다."
+    :invalid-publisher-name "출판사 이름이 유효하지 않습니다."
+    :publisher-not-found "출판사를 찾을 수 없습니다."}
    
    :system
    {:db-error "데이터베이스 오류가 발생했습니다."
@@ -44,7 +47,8 @@
     :image-metadata-error "이미지 메타데이터 처리 중 오류가 발생했습니다."
     :config-error "필요한 Cloudinary 설정이 누락되었습니다."
     :cloudinary-error "Cloudinary 오류가 발생했습니다."
-    }})
+    :publisher-save-error "출판사 저장 중 오류가 발생했습니다."
+    :publisher-association-error "출판사 연결 중 오류가 발생했습니다."}})
 
 ;; 이미지 관련 에러 메시지
 (def image-error-messages

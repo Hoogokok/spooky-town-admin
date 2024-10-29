@@ -26,23 +26,35 @@
       (let [;; 1. 출판사 정보가 있는 경우에만 저장/조회
             publisher-result (when-let [publisher-name (get-in comic [:publisher :value])]
                              (log/debug "Saving publisher:" publisher-name)
-                             (persistence/save-publisher 
-                              publisher-repository 
-                              {:name publisher-name}))
-            _ (when publisher-result
-                (log/debug "Publisher saved:" (r/value publisher-result)))
+                             (if (clojure.string/blank? publisher-name)
+                               (r/failure (errors/business-error
+                                          :invalid-publisher-name
+                                          (errors/get-business-message :invalid-publisher-name)))
+                               (let [existing-publisher (persistence/find-publisher-by-name 
+                                                       publisher-repository 
+                                                       publisher-name)]
+                                 (if (and (r/success? existing-publisher)
+                                        (some? (r/value existing-publisher)))
+                                   (r/success (r/value existing-publisher))
+                                   (persistence/save-publisher 
+                                    publisher-repository 
+                                    {:name publisher-name})))))
+            _ (when (r/failure? publisher-result)
+                (log/error "Failed to save publisher:" (r/error publisher-result)))
             ;; 2. 만화 저장 (publisher 필드 제외)
-            comic-result (persistence/save-comic 
-                         comic-repository 
-                         (-> comic
-                             (update-in [:title :value] str)
-                             (update-in [:artist :value] str)
-                             (update-in [:author :value] str)
-                             (update-in [:isbn13 :value] str)
-                             (update-in [:isbn10 :value] str)
-                             (update-in [:price :value] identity)
-                             (dissoc :publisher)
-                             (assoc :image-url image-url)))]
+            comic-result (when (or (nil? publisher-result)
+                                 (r/success? publisher-result))
+                          (persistence/save-comic 
+                           comic-repository 
+                           (-> comic
+                               (update-in [:title :value] str)
+                               (update-in [:artist :value] str)
+                               (update-in [:author :value] str)
+                               (update-in [:isbn13 :value] str)
+                               (update-in [:isbn10 :value] str)
+                               (update-in [:price :value] identity)
+                               (dissoc :publisher)
+                               (assoc :image-url image-url))))]
         (if (r/success? comic-result)
           (do
             ;; 3. 출판사가 있고 저장이 성공한 경우에만 연관 관계 생성
@@ -51,13 +63,18 @@
               (let [comic-id (get-in comic-result [:value :id])
                     publisher-id (get-in publisher-result [:value :id])]
                 (log/debug "Creating association between comic" comic-id "and publisher" publisher-id)
-                (persistence/associate-publisher-with-comic 
-                 publisher-repository
-                 comic-id
-                 publisher-id)))
+                (let [assoc-result (persistence/associate-publisher-with-comic 
+                                   publisher-repository
+                                   comic-id
+                                   publisher-id)]
+                  (when (r/failure? assoc-result)
+                    (r/failure (errors/system-error
+                               :publisher-association-error
+                               (errors/get-system-message :publisher-association-error)
+                               "Failed to create association"))))))
             ;; 4. 만화 저장 결과 반환
             comic-result)
-          comic-result)))  ;; 실패한 경우 그대로 반환
+          comic-result)))
     (catch Exception e
       (log/error e "Failed to save comic with publisher")
       (r/failure (errors/system-error 

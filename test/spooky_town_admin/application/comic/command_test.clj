@@ -145,7 +145,7 @@
                            :isbn13 "9791193534168"
                            :isbn10 "119353416X"
                            :cover-image test-image
-                           :publisher "테스트 출판사")
+                           :publisher {:value "테스트 출판사"})
           result (command/create-comic service comic-data)]
       (is (r/success? result))
       (let [comic-id (:id (r/value result))
@@ -162,12 +162,12 @@
                             :isbn13 "9791193534168"
                             :isbn10 "119353416X"
                             :cover-image test-image
-                            :publisher "테스트 출판사")
+                            :publisher {:value "테스트 출판사"})
           comic2-data (assoc test-comic-data 
                             :isbn13 "9791193534169"
                             :isbn10 "119353416Y"
                             :cover-image test-image
-                            :publisher "테스트 출판사")
+                            :publisher {:value "테스트 출판사"})
           result1 (command/create-comic service comic1-data)
           result2 (command/create-comic service comic2-data)]
       (is (r/success? result1))
@@ -181,7 +181,51 @@
                         (:id (r/value result2)))]
         ;; 두 만화 모두 같은 출판사와 연결되어야 함
         (is (= (get-in publishers1 [:value 0 :id])
-               (get-in publishers2 [:value 0 :id])))))))
+               (get-in publishers2 [:value 0 :id]))))))
+
+  (testing "만화 생성 - 잘못된 출판사 이름"
+    (let [service (service/create-comic-service {})
+          test-image (create-test-image 100 100)
+          invalid-cases [{:name "빈 문자열"
+                         :publisher {:value ""}
+                         :expected-error :invalid-publisher-name}
+                        {:name "공백 문자열"
+                         :publisher {:value "   "}
+                         :expected-error :invalid-publisher-name}]]
+      (doseq [{:keys [name publisher expected-error]} invalid-cases]
+        (testing name
+          (let [comic-data (assoc test-comic-data 
+                                 :isbn13 "9791193534168"
+                                 :isbn10 "119353416X"
+                                 :cover-image test-image
+                                 :publisher publisher)
+                result (command/create-comic service comic-data)]
+            (is (not (r/success? result)))
+            (is (= expected-error (:code (:error result)))))))))
+
+  (testing "만화 생성 - 출판사 연관관계 생성 실패"
+    (let [service (service/create-comic-service {})
+          test-image (create-test-image 100 100)
+          comic-data (assoc test-comic-data 
+                           :isbn13 "9791193534168"
+                           :isbn10 "119353416X"
+                           :cover-image test-image
+                           :publisher {:value "테스트 출판사"})
+          failing-publisher-repo (reify protocol/PublisherRepository
+                                 (save-publisher [_ publisher]
+                                   (r/success {:id 1 :name (:name publisher)}))
+                                 (find-publisher-by-id [_ _] (r/success nil))
+                                 (find-publisher-by-name [_ _] (r/success nil))
+                                 (find-publishers-by-comic-id [_ _] (r/success []))
+                                 (associate-publisher-with-comic [_ _ _] 
+                                   (r/failure (errors/system-error 
+                                              :publisher-association-error 
+                                              "Failed to create association"))))]
+      (with-redefs [persistence/create-publisher-repository 
+                    (constantly failing-publisher-repo)]
+        (let [result (command/create-comic service comic-data)]
+          (is (not (r/success? result)))
+          (is (= :publisher-association-error (:code (:error result)))))))))
 
 (deftest create-comic-transaction-test
   (testing "만화 생성 - 트랜잭션 롤백"
