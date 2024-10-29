@@ -1,6 +1,7 @@
 (ns spooky-town-admin.application.comic.command-test
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
+   [clojure.tools.logging :as log]
    [spooky-town-admin.application.comic.command :as command]
    [spooky-town-admin.application.comic.service :as service]
    [spooky-town-admin.core.result :as r]
@@ -58,13 +59,15 @@
                    :user (.getUsername container)
                    :password (.getPassword container)}
             ds (db-config/create-datasource config)]
-        (println "Created test datasource")
+        (log/debug "Created test datasource")
         (db-config/run-migrations! {:store :database
                                   :migration-dir "db/migrations"
                                   :db config})
         (with-redefs [db-config/get-datasource (constantly ds)
                      persistence/create-comic-repository 
                      (fn [] (postgresql/->PostgresqlComicRepository ds))
+                     persistence/create-publisher-repository 
+                     (fn [] (postgresql/->PostgresqlPublisherRepository ds))
                      image-storage/create-image-storage 
                      (fn [& _] (->MockImageStorage))]
           (f)))
@@ -132,3 +135,38 @@
       (is (r/success? result))
       (is (number? (:id (r/value result))))
       (is (= "테스트 만화" (:title (r/value result)))))))
+
+(deftest create-comic-with-publisher-test
+  (testing "만화 생성 - 출판사 연관관계 생성"
+    (let [service (service/create-comic-service {})
+          test-image (create-test-image 100 100)
+          comic-data (assoc test-comic-data 
+                           :isbn13 "9791193534168"
+                           :isbn10 "119353416X"
+                           :cover-image test-image
+                           :publisher "테스트 출판사")
+          result (command/create-comic service comic-data)]
+      (is (r/success? result))
+      (let [comic-id (:id (r/value result))
+            publisher-repo (persistence/create-publisher-repository)
+            publishers (persistence/find-publishers-by-comic-id publisher-repo comic-id)]
+        (is (r/success? publishers))
+        (is (= 1 (count (r/value publishers))))
+        (is (= "테스트 출판사" (:name (first (r/value publishers)))))))))
+
+(deftest create-comic-without-publisher-test
+  (testing "만화 생성 - 출판사 없이 생성"
+    (let [service (service/create-comic-service {})
+          test-image (create-test-image 100 100)
+          comic-data (-> test-comic-data
+                        (assoc :isbn13 "9791193534168"
+                               :isbn10 "119353416X"
+                               :cover-image test-image)
+                        (dissoc :publisher))
+          result (command/create-comic service comic-data)]
+      (is (r/success? result))
+      (let [comic-id (:id (r/value result))
+            publisher-repo (persistence/create-publisher-repository)
+            publishers (persistence/find-publishers-by-comic-id publisher-repo comic-id)]
+        (is (r/success? publishers))
+        (is (empty? (r/value publishers)))))))
