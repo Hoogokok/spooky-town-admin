@@ -41,11 +41,8 @@
       (reset! datasource ds)
       ;; 마이그레이션 실행
       (try
-        (println "Running database migrations...")
         (migratus/migrate migratus-config)
-        (println "Migrations completed successfully")
         (catch Exception e
-          (println "Migration error:" (.getMessage e))
           (.printStackTrace e))))))
 
 (defn get-datasource []
@@ -60,3 +57,22 @@
 
 (defn get-current-tx []
   *current-tx*)
+
+(defn run-migrations! [config]
+  (try
+    (println "Starting database migrations with config:" config)
+    (migratus/init config)
+    (let [pending (migratus/pending-list config)]
+      (if (seq pending)
+        (do
+          (println "Pending migrations:" pending)
+          (migratus/migrate config)
+          (r/success {:migrated pending}))
+        (do
+          (println "No pending migrations")
+          (r/success {:migrated []}))))
+    (catch Exception e
+      (println "Migration failed:" (.getMessage e))
+      (.printStackTrace e)
+      (r/failure {:error :migration-failed
+                  :message (.getMessage e)}))))
