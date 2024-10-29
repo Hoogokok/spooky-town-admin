@@ -69,6 +69,6 @@
 
 (deftest image-storage-factory-test
   (testing "테스트 환경에서 Mock 저장소 생성"
-    (let [storage (image-storage/create-image-storage :test {})]
+    (let [storage (image-storage/create-image-storage :test)]
       (is (instance? spooky_town_admin.infrastructure.image_storage.MockCDNImageStorage 
                     storage)))))

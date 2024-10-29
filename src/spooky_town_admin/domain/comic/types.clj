@@ -1,10 +1,13 @@
 (ns spooky-town-admin.domain.comic.types
-  (:require [clojure.spec.alpha :as s]
-            [spooky-town-admin.domain.common.result :refer [success failure]]
-            [spooky-town-admin.domain.comic.errors :refer [validation-error 
-                                                          business-error
-                                                          get-validation-message
-                                                          get-image-error-message]]))
+  (:require
+   [clojure.spec.alpha :as s]
+   [spooky-town-admin.domain.comic.errors :refer [business-error
+                                                  get-validation-message
+                                                  validation-error]]
+   [spooky-town-admin.domain.comic.errors :as errors]
+   [spooky-town-admin.domain.common.result :refer [failure success]]
+   [spooky-town-admin.domain.common.result :as r]
+   [clojure.tools.logging :as log]))
 
 ;; --------- 유효성 검사 헬퍼 함수들 ---------
 (defn- calculate-isbn13-checksum [isbn]
@@ -168,22 +171,31 @@
     (format "Image[type=%s, %dx%d, %d bytes]" 
             content-type width height size)))
 
-(defn create-image-metadata [{:keys [content-type width height size] :as data}]
-  (cond
-    (not (contains? allowed-image-types content-type))
-    (failure (validation-error :image-type (get-image-error-message :type)))
-    
-    (or (> width max-dimension) (> height max-dimension))
-    (failure (validation-error :image-dimensions (get-image-error-message :dimensions)))
-    
-    (> (* width height) max-area)
-    (failure (validation-error :image-area (get-image-error-message :area)))
-    
-    (> size max-file-size)
-    (failure (validation-error :image-size (get-image-error-message :size)))
-    
-    :else
-    (success (map->ImageMetadata data))))
+(defn validate-image-metadata [image]
+  (if (or (nil? image)
+          (nil? (:width image))
+          (nil? (:height image)))
+    (do
+      (log/error "Invalid image metadata structure")
+      (r/failure (errors/validation-error :cover-image
+                                          (errors/get-image-error-message :invalid))))
+    (let [constraints [{:check #(contains? allowed-image-types (:content-type %))
+                       :error-type :type}
+                      {:check #(>= max-dimension (max (:width %) (:height %)))
+                       :error-type :dimensions}
+                      {:check #(>= max-area (* (:width %) (:height %)))
+                       :error-type :area}
+                      {:check #(>= max-file-size (:size %))
+                       :error-type :size}]]
+      (if-let [failed-constraint (first (filter #(not ((:check %) image)) constraints))]
+        (do
+          (log/error "Image validation failed:" (:error-type failed-constraint))
+          (r/failure (errors/validation-error 
+                      :cover-image 
+                      (errors/get-image-error-message (:error-type failed-constraint)))))
+        (do
+          (println "Image validation successful")
+          (r/success image))))))
 
 ;; --------- 상태 전이를 나타내는 값 객체들 ---------
 (defrecord UnvalidatedComic [title artist author isbn13 isbn10 
@@ -229,33 +241,44 @@
   (success (map->UnvalidatedComic data)))
 
 (defn create-validated-comic [{:keys [title artist author isbn13 isbn10
-                                    publication-date publisher price
-                                    page-count description
-                                    cover-image-metadata] :as data}]
-  (let [validations [(create-title title)
-                     (create-artist artist)
-                     (create-author author)
-                     (create-isbn13 isbn13)
-                     (create-isbn10 isbn10)
-                     (create-publication-date publication-date)
-                     (create-publisher publisher)
-                     (create-price price)
-                     (create-page-count page-count)
-                     (create-description description)]
-        errors (keep #(when (not (:success %)) (:error %)) validations)]
-    (if (seq errors)
-      (failure (first errors))
+                                   publication-date publisher price
+                                   page-count description
+                                   cover-image-metadata] :as data}]
+  (let [required-validations [(create-title title)
+                             (create-artist artist)
+                             (create-author author)
+                             (create-isbn13 isbn13)
+                             (create-isbn10 isbn10)]
+        optional-validations [(when (some? publication-date)
+                               (create-publication-date publication-date))
+                             (when (some? publisher)
+                               (create-publisher publisher))
+                             (when (some? price)
+                               (create-price price))
+                             (when (some? page-count)
+                               (create-page-count page-count))
+                             (when (some? description)
+                               (create-description description))]
+        required-errors (keep #(when (not (:success %)) (:error %)) required-validations)
+        optional-errors (keep #(when (and % (not (:success %))) (:error %)) optional-validations)]
+    (if (seq required-errors)
+      (failure (first required-errors))
       (success (map->ValidatedComic 
                 {:title (:value (create-title title))
                  :artist (:value (create-artist artist))
                  :author (:value (create-author author))
                  :isbn13 (:value (create-isbn13 isbn13))
                  :isbn10 (:value (create-isbn10 isbn10))
-                 :publication-date (:value (create-publication-date publication-date))
-                 :publisher (:value (create-publisher publisher))
-                 :price (:value (create-price price))
-                 :page-count (:value (create-page-count page-count))
-                 :description (:value (create-description description))
+                 :publication-date (when publication-date 
+                                   (:value (create-publication-date publication-date)))
+                 :publisher (when publisher 
+                            (:value (create-publisher publisher)))
+                 :price (when price 
+                         (:value (create-price price)))
+                 :page-count (when page-count 
+                             (:value (create-page-count page-count)))
+                 :description (when description 
+                              (:value (create-description description)))
                  :cover-image-metadata cover-image-metadata})))))
 
 (defn create-persisted-comic [id validated-comic cover-image-url]
