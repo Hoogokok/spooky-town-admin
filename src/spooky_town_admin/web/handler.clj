@@ -1,6 +1,7 @@
 (ns spooky-town-admin.web.handler
   (:require
-   [spooky-town-admin.application.comic-service :as comic-service]
+   [spooky-town-admin.application.comic.command :as comic-command]
+   [spooky-town-admin.application.comic.query :as comic-query]
    [spooky-town-admin.core.result :as r]
    [clojure.tools.logging :as log]))
 
@@ -21,7 +22,7 @@
 
 (defn list-comics [service]
   (try
-    (let [result (comic-service/list-comics service)]
+    (let [result (comic-query/list-comics service)]
       (handle-result result))
     (catch Exception e
       {:status 500
@@ -31,7 +32,7 @@
 (defn get-comic-by-id [service id]
   (try
     (let [comic-id (Integer/parseInt id)
-          result (comic-service/get-comic service comic-id)]
+          result (comic-query/get-comic service comic-id)]
       (handle-result result))
     (catch NumberFormatException _
       {:status 400
@@ -51,7 +52,7 @@
         {:status 400
          :body {:error :validation
                 :message "요청 본문이 비어있습니다."}})
-      (let [result (comic-service/create-comic service body-params)]
+      (let [result (comic-command/create-comic service body-params)]
         (if (r/success? result)
           {:status 201
            :body (:value result)}

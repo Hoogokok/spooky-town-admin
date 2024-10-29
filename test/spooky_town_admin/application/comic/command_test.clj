@@ -1,7 +1,8 @@
-(ns spooky-town-admin.application.comic-service-test
+(ns spooky-town-admin.application.comic.command-test
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
-   [spooky-town-admin.application.comic-service :as service]
+   [spooky-town-admin.application.comic.command :as command]
+   [spooky-town-admin.application.comic.service :as service]
    [spooky-town-admin.core.result :as r]
    [spooky-town-admin.domain.comic.errors :as errors]
    [spooky-town-admin.domain.comic.workflow :as workflow]
@@ -22,7 +23,7 @@
     (.withUsername "test")
     (.withPassword "test")))
 
-;; Mock 이미지 저장소 (변경 없음)
+;; Mock 이미지 저장소
 (defrecord MockImageStorage []
   image-storage/ImageStorage
   (store-image [_ image]
@@ -43,7 +44,7 @@
   (get-image-url [_ image-id]
     (r/success (str "https://mock-cdn.example.com/images/" image-id))))
 
-;; 테스트 픽스처 수정
+;; 테스트 픽스처
 (def ^:dynamic *test-datasource* nil)
 
 (defn test-fixture [f]
@@ -61,7 +62,7 @@
         (db-config/run-migrations! {:store :database
                                   :migration-dir "db/migrations"
                                   :db config})
-        (with-redefs [db-config/get-datasource (constantly ds)  ;; 여기가 변경됨
+        (with-redefs [db-config/get-datasource (constantly ds)
                      persistence/create-comic-repository 
                      (fn [] (postgresql/->PostgresqlComicRepository ds))
                      image-storage/create-image-storage 
@@ -72,7 +73,7 @@
 
 (use-fixtures :each test-fixture)
 
-;; 테스트 데이터 (변경 없음)
+;; 테스트 데이터
 (def test-comic-data
   {:title "테스트 만화"
    :artist "테스트 작가"
@@ -82,7 +83,7 @@
    :publisher "테스트 출판사"
    :price 15000})
 
-;; 테스트용 이미지 생성 헬퍼 (변경 없음)
+;; 테스트용 이미지 생성 헬퍼
 (defn create-test-image [width height]
   (let [image (BufferedImage. width height BufferedImage/TYPE_INT_RGB)
         temp-file (File/createTempFile "test-image" ".jpg")]
@@ -97,13 +98,13 @@
   (testing "만화 생성 - 잘못된 이미지 실패"
     (let [service (service/create-comic-service {})
           test-image (create-test-image 100 100)
-          _ (service/create-comic service  
+          _ (command/create-comic service  
               (assoc test-comic-data :cover-image test-image))
           invalid-image {:tempfile (File. "non-existent.jpg")
                         :content-type "image/jpeg"
                         :size 0
                         :filename "invalid.jpg"}
-          result (service/create-comic service 
+          result (command/create-comic service 
                   (assoc test-comic-data :cover-image invalid-image))]
       (is (not (r/success? result)))
       (is (= :duplicate-isbn (:code (:error result))))))
@@ -111,9 +112,9 @@
   (testing "만화 생성 - 중복 ISBN 실패"
     (let [service (service/create-comic-service {})
           test-image (create-test-image 100 100)
-          _ (service/create-comic service 
+          _ (command/create-comic service 
               (assoc test-comic-data :cover-image test-image))
-          duplicate-result (service/create-comic service 
+          duplicate-result (command/create-comic service 
                            (assoc test-comic-data 
                                  :cover-image test-image
                                  :title "다른 제목"))]
@@ -123,7 +124,7 @@
   (testing "만화 생성 - 성공 케이스"
     (let [service (service/create-comic-service {})
           test-image (create-test-image 100 100)
-          result (service/create-comic service 
+          result (command/create-comic service 
                   (assoc test-comic-data 
                         :isbn13 "9791193534168"
                         :isbn10 "119353416X"
