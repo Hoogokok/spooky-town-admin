@@ -34,24 +34,20 @@
            (select-keys image-data [:filename :content-type :size]))
   (if image-data
     (let [metadata (extract-image-metadata image-data)]
-      (println "Extracted image metadata:" metadata)
       (if metadata
         (-> (types/validate-image-metadata metadata)
             (r/bind (fn [validated-metadata]
-                     (println "Image validation successful:" validated-metadata)
                      (-> (image-storage/store-image image-storage image-data)
                          (r/map (fn [result]
-                                (println "Raw storage result:" (pr-str result))
                                 (let [response {:cover-image-metadata validated-metadata
                                               :cover-image-url (:url result)}]
-                                  (println "Processed storage result:" (pr-str response))
                                   response)))))))
         (do
-          (println "Failed to extract image metadata")
+          (log/error "Failed to extract image metadata")
           (r/failure (errors/validation-error :cover-image 
                                             (errors/get-image-error-message :invalid))))))
     (do
-      (println "No image data provided")
+      (log/error "No image data provided")
       (r/success nil))))
 
 (^:export defn create-comic-workflow [image-storage comic-data]
@@ -65,7 +61,7 @@
                             {:comic validated
                              :events [(types/create-comic-validated validated)]})))))
       (r/bind (fn [{:keys [comic events]}]
-                (println "Processing image for comic:" comic)
+                (log/debug "Processing image for comic:" comic)
                 (-> (process-and-store-image image-storage (:cover-image comic-data))
                     (r/map (fn [image-result]
                             (if image-result
