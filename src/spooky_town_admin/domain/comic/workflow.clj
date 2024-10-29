@@ -1,5 +1,5 @@
 (ns spooky-town-admin.domain.comic.workflow
-  (:require [spooky-town-admin.domain.common.result :as r]
+  (:require [spooky-town-admin.core.result :as r]
             [clojure.tools.logging :as log]
             [spooky-town-admin.domain.comic.types :as types]
             [spooky-town-admin.domain.comic.errors :as errors]

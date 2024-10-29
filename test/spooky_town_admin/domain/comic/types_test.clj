@@ -1,7 +1,7 @@
 (ns spooky-town-admin.domain.comic.types-test
   (:require [clojure.test :refer [deftest testing is]]
             [spooky-town-admin.domain.comic.types :as types]
-            [spooky-town-admin.domain.common.result :refer [success? success failure]]
+            [spooky-town-admin.core.result :refer [success? success failure]]
             [spooky-town-admin.domain.comic.errors :refer [validation-error]]))
 
 (deftest value-objects-test

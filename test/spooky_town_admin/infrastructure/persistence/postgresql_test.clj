@@ -3,7 +3,7 @@
             [next.jdbc :as jdbc]
             [spooky-town-admin.infrastructure.persistence.postgresql :as sut]
             [spooky-town-admin.infrastructure.persistence.protocol :as protocol]
-            [spooky-town-admin.domain.common.result :as r]
+            [spooky-town-admin.core.result :as r]
             [spooky-town-admin.infrastructure.persistence.config :as config])
   (:import [org.testcontainers.containers PostgreSQLContainer]
            [com.zaxxer.hikari HikariConfig HikariDataSource]))

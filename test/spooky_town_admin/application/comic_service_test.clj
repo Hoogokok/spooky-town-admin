@@ -2,13 +2,12 @@
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
    [spooky-town-admin.application.comic-service :as service]
+   [spooky-town-admin.core.result :as r]
    [spooky-town-admin.domain.comic.errors :as errors]
    [spooky-town-admin.domain.comic.workflow :as workflow]
-   [spooky-town-admin.domain.common.result :as r]
    [spooky-town-admin.infrastructure.image-storage :as image-storage]
    [spooky-town-admin.infrastructure.persistence :as persistence]
    [spooky-town-admin.infrastructure.persistence.config :as db-config]
-   [spooky-town-admin.infrastructure.persistence.config :as config]
    [spooky-town-admin.infrastructure.persistence.postgresql :as postgresql])
   (:import
    [java.awt.image BufferedImage]
@@ -62,7 +61,7 @@
         (db-config/run-migrations! {:store :database
                                   :migration-dir "db/migrations"
                                   :db config})
-        (with-redefs [config/get-datasource (constantly ds)  ;; 여기가 변경됨
+        (with-redefs [db-config/get-datasource (constantly ds)  ;; 여기가 변경됨
                      persistence/create-comic-repository 
                      (fn [] (postgresql/->PostgresqlComicRepository ds))
                      image-storage/create-image-storage 
