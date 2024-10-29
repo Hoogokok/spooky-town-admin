@@ -7,6 +7,7 @@
             [ring.middleware.cors :refer [wrap-cors]]
             [spooky-town-admin.web.routes :as routes]
             [spooky-town-admin.application.comic-service :as comic-service]
+            [clojure.tools.logging :as log]
             [ring.middleware.multipart-params.temp-file :as temp-file]
             [spooky-town-admin.infrastructure.persistence.config :as db-config])
   (:gen-class))
@@ -29,7 +30,7 @@
   (when-not @server
     (let [env (keyword (or (System/getenv "ENVIRONMENT") "dev"))
           app (create-app env)]
-      (println "서버가 http://localhost:" port "에서 실행 중입니다.")
+      (log/info "Server started at http://localhost:" port)
       (reset! server (jetty/run-jetty app {:port port :join? false})))))
 
 (defn stop-server! []

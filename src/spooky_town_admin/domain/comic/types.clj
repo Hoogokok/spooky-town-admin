@@ -6,7 +6,8 @@
                                                   validation-error]]
    [spooky-town-admin.domain.comic.errors :as errors]
    [spooky-town-admin.domain.common.result :refer [failure success]]
-   [spooky-town-admin.domain.common.result :as r]))
+   [spooky-town-admin.domain.common.result :as r]
+   [clojure.tools.logging :as log]))
 
 ;; --------- 유효성 검사 헬퍼 함수들 ---------
 (defn- calculate-isbn13-checksum [isbn]
@@ -171,14 +172,13 @@
             content-type width height size)))
 
 (defn validate-image-metadata [image]
-  (println "Validating image metadata:" image)
   (if (or (nil? image)
           (nil? (:width image))
           (nil? (:height image)))
     (do
-      (println "Invalid image metadata structure")
-      (r/failure (errors/validation-error :cover-image 
-                                        (errors/get-image-error-message :invalid))))
+      (log/error "Invalid image metadata structure")
+      (r/failure (errors/validation-error :cover-image
+                                          (errors/get-image-error-message :invalid))))
     (let [constraints [{:check #(contains? allowed-image-types (:content-type %))
                        :error-type :type}
                       {:check #(>= max-dimension (max (:width %) (:height %)))
@@ -189,7 +189,7 @@
                        :error-type :size}]]
       (if-let [failed-constraint (first (filter #(not ((:check %) image)) constraints))]
         (do
-          (println "Image validation failed:" (:error-type failed-constraint))
+          (log/error "Image validation failed:" (:error-type failed-constraint))
           (r/failure (errors/validation-error 
                       :cover-image 
                       (errors/get-image-error-message (:error-type failed-constraint)))))
