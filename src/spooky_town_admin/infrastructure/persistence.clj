@@ -35,3 +35,19 @@
 
 (defn list-comics [repo]
   (protocol/list-comics repo))
+
+;; Publisher 관련 함수들 추가
+(defn save-publisher [repo publisher]
+  (protocol/save-publisher repo publisher))
+
+(defn find-publisher-by-id [repo id]
+  (protocol/find-publisher-by-id repo id))
+
+(defn find-publisher-by-name [repo name]
+  (protocol/find-publisher-by-name repo name))
+
+(defn find-publishers-by-comic-id [repo comic-id]
+  (protocol/find-publishers-by-comic-id repo comic-id))
+
+(defn associate-publisher-with-comic [repo comic-id publisher-id]
+  (protocol/associate-publisher-with-comic repo comic-id publisher-id))
