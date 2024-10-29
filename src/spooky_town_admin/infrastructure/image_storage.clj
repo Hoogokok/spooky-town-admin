@@ -2,7 +2,8 @@
   (:require [spooky-town-admin.domain.comic.errors :as errors]
             [spooky-town-admin.domain.common.result :as r]
             [spooky-town-admin.infrastructure.config.cloudinary :as cloud-config]
-            [clojure.java.io :as io])
+            [clojure.java.io :as io]
+            [clojure.tools.logging :as log])
   (:import [java.io File]
            [java.nio.file Files Path]
            [javax.imageio ImageIO]
@@ -56,8 +57,9 @@
   (store-image [_ image-data]
     (try
       (let [temp-file (:tempfile image-data)
-            _ (println "Uploading file:" {:name (:filename image-data)
-                                        :size (.length temp-file)})
+            _ (log/debug "Uploading file:" 
+                        {:name (:filename image-data)
+                         :size (.length temp-file)})
             options (ObjectUtils/asMap (to-array
                      ["resource_type" "image"
                       "unique_filename" true
@@ -65,25 +67,22 @@
                       "use_filename" true  
                       "folder" "comics"    
                       "type" "upload"]))   
-            _ (println "Upload options:" (pr-str (into {} options)))
+            _ (log/debug "Upload options:" (into {} options))
             uploader (.uploader cloudinary)
             upload-result (.upload uploader temp-file options)
-            _ (println "Raw Cloudinary response:" (pr-str (into {} upload-result)))
+            _ (log/debug "Raw Cloudinary response:" (into {} upload-result))
             public-id (.get upload-result "public_id")
-            secure-url (.get upload-result "secure_url")  ;; secure_url 직접 추출
-            _ (println "Extracted values:" {:public-id public-id
-                                          :secure-url secure-url})
+            secure-url (.get upload-result "secure_url")
             response {:image-id public-id
                      :metadata {:width (.get upload-result "width")
                               :height (.get upload-result "height")
                               :content-type (str "image/" (.get upload-result "format"))
                               :size (.get upload-result "bytes")}
-                     :url secure-url}]  ;; secure_url 사용
-        (println "Final formatted response:" (pr-str response))
+                     :url secure-url}]
+        (log/debug "Image upload completed:" response)
         (r/success response))
       (catch Exception e
-        (println "Cloudinary upload error:" (.getMessage e))
-        (.printStackTrace e)  ;; 스택 트레이스 출력 추가
+        (log/error e "Failed to upload image to Cloudinary")
         (r/failure (errors/system-error
                     :image-upload-error
                     (errors/get-system-message :image-upload-error)
@@ -122,8 +121,14 @@
 
 ;; 환경에 따른 저장소 생성
 (defn create-image-storage [env]
+  (log/info "Creating image storage for environment:" env)
   (case env
-    :test (create-mock-image-storage)
-    :prod (create-cloudinary-storage)
-    ;; 기본값은 mock 저장소
-    (create-cloudinary-storage)))
+    :test (do
+            (log/debug "Using mock image storage for test environment")
+            (create-mock-image-storage))
+    :prod (do
+            (log/debug "Using Cloudinary storage for production environment")
+            (create-cloudinary-storage))
+    (do
+      (log/debug "Using default Cloudinary storage")
+      (create-cloudinary-storage))))

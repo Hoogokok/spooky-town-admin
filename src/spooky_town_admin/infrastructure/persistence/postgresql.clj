@@ -1,14 +1,16 @@
 (ns spooky-town-admin.infrastructure.persistence.postgresql
-  (:require [next.jdbc :as jdbc]
-            [next.jdbc.result-set :as rs]
-            [honey.sql :as sql]
-            [honey.sql.helpers :as h]
-            [spooky-town-admin.infrastructure.persistence.protocol :refer [ComicRepository]]
-            [spooky-town-admin.domain.comic.errors :as errors]
-            [spooky-town-admin.domain.common.result :as r]
-            [spooky-town-admin.infrastructure.persistence.config :as config]
-            [clojure.string :as str])
-  (:import (java.sql Date)))  ;; java.sql.Date import 추가
+  (:require
+   [clojure.string :as str]
+   [clojure.tools.logging :as log]
+   [honey.sql :as sql]
+   [next.jdbc :as jdbc]
+   [next.jdbc.result-set :as rs]
+   [spooky-town-admin.domain.comic.errors :as errors]
+   [spooky-town-admin.domain.common.result :as r]
+   [spooky-town-admin.infrastructure.persistence.config :as config]
+   [spooky-town-admin.infrastructure.persistence.protocol :refer [ComicRepository]])
+  (:import
+   (java.sql Date)))  ;; java.sql.Date import 추가
 
 (defn- get-value [v]
   (cond
@@ -22,47 +24,47 @@
 
 ;; 도메인 객체를 DB 레코드로 변환
 (defn- comic->db [comic]
-  (println "Converting to DB format:" comic)
+  (log/debug "Converting comic to DB format:" comic)
   (let [db-map (cond-> {}
                  ;; nil이 아닌 값만 맵에 추가하고, record 타입은 값을 추출
-                 (not (str/blank? (get-value (:title comic)))) 
+                 (not (str/blank? (get-value (:title comic))))
                  (assoc :title (get-value (:title comic)))
-                 
-                 (not (str/blank? (get-value (:artist comic)))) 
+
+                 (not (str/blank? (get-value (:artist comic))))
                  (assoc :artist (get-value (:artist comic)))
-                 
-                 (not (str/blank? (get-value (:author comic)))) 
+
+                 (not (str/blank? (get-value (:author comic))))
                  (assoc :author (get-value (:author comic)))
-                 
-                 (not (str/blank? (get-value (:isbn13 comic)))) 
+
+                 (not (str/blank? (get-value (:isbn13 comic))))
                  (assoc :isbn13 (get-value (:isbn13 comic)))
-                 
-                 (not (str/blank? (get-value (:isbn10 comic)))) 
+
+                 (not (str/blank? (get-value (:isbn10 comic))))
                  (assoc :isbn10 (get-value (:isbn10 comic)))
-                 
+
                  (:publication-date comic)
                  (assoc :publication_date (-> comic
-                                            :publication-date
-                                            get-value
-                                            to-sql-date))
-                 
-                 (not (str/blank? (get-value (:publisher comic)))) 
+                                              :publication-date
+                                              get-value
+                                              to-sql-date))
+
+                 (not (str/blank? (get-value (:publisher comic))))
                  (assoc :publisher (get-value (:publisher comic)))
-                 
+
                  (:price comic)
                  (assoc :price (when-let [p (get-value (:price comic))]
-                                (bigdec p)))
-                 
+                                 (bigdec p)))
+
                  (:page-count comic)
                  (assoc :page_count (get-value (:page-count comic)))
-                 
-                 (not (str/blank? (get-value (:description comic)))) 
+
+                 (not (str/blank? (get-value (:description comic))))
                  (assoc :description (get-value (:description comic)))
-                 
-                 (not (str/blank? (get-value (:cover-image-url comic)))) 
+
+                 (not (str/blank? (get-value (:cover-image-url comic))))
                  (assoc :image_url (get-value (:cover-image-url comic))))]
-    
-    (println "Converted DB map:" db-map)
+
+    (log/debug "Converted DB map:" db-map)
     db-map))
 
 ;; DB 레코드를 도메인 객체로 변환
@@ -86,34 +88,26 @@
   ComicRepository
   (save-comic [_ comic]
     (try 
-      (println "Saving comic to database:" comic)
       (let [comic-data (comic->db comic)
-            _ (println "Comic data for insert:" comic-data)
-            ;; 빈 맵이 아닌 경우에만 쿼리 실행
             query (when (seq comic-data)
                    {:insert-into :comics
                     :values [comic-data]
-                    :returning :*})
-            _ (when query
-                (println "Generated query:" (pr-str query)))
-            formatted-query (when query
-                            (sql/format query))
-            _ (when formatted-query
-                (println "Formatted SQL:" formatted-query))]
-        (if formatted-query
+                    :returning :*})]
+        (when query
+          (log/debug "Generated SQL query:" (pr-str query)))
+        (if-let [formatted-query (when query (sql/format query))]
           (let [result (jdbc/execute-one! datasource 
                                         formatted-query
                                         {:builder-fn rs/as-unqualified-maps})]
-            (println "Database result:" result)
+            (log/debug "Database insert result:" result)
             (r/success (db->comic result)))
           (do
-            (println "No valid data to insert")
+            (log/warn "No valid data to insert")
             (r/failure (errors/validation-error
                         :invalid-data
                         "No valid data to insert into database")))))
       (catch Exception e
-        (println "Error saving comic:" (.getMessage e))
-        (.printStackTrace e)
+        (log/error e "Failed to save comic")
         (r/failure
           (errors/system-error
             :db-error
@@ -140,27 +134,24 @@
 
   (find-comic-by-isbn [_ isbn]
     (try
-      (println "Searching for ISBN:" isbn)
+      (log/debug "Searching for comic with ISBN:" isbn)
       (let [query {:select :*
                    :from :comics
                    :where [:or
                           [:= :isbn13 isbn]
                           [:= :isbn10 isbn]]}
             formatted-query (sql/format query)
-            _ (println "Executing query:" formatted-query)
             result (jdbc/execute-one! datasource formatted-query
                                     {:builder-fn rs/as-unqualified-maps})]
-        (println "ISBN search result:" result)
         (if result
           (do 
-            (println "Found existing comic with ISBN:" isbn)
+            (log/debug "Found comic with ISBN:" isbn)
             (r/success (db->comic result)))
           (do
-            (println "No comic found with ISBN:" isbn)
-            (r/success nil)))) ;; ISBN 검색은 없는 경우도 정상 케이스
+            (log/debug "No comic found with ISBN:" isbn)
+            (r/success nil))))
       (catch Exception e
-        (println "Error searching for ISBN:" (.getMessage e))
-        (.printStackTrace e)
+        (log/error e "Failed to search comic by ISBN:" isbn)
         (r/failure (errors/system-error 
                     :db-error 
                     (errors/get-system-message :db-error)

@@ -1,56 +1,36 @@
 (ns spooky-town-admin.domain.comic.workflow
   (:require [spooky-town-admin.domain.common.result :as r]
+            [clojure.tools.logging :as log]
             [spooky-town-admin.domain.comic.types :as types]
             [spooky-town-admin.domain.comic.errors :as errors]
             [spooky-town-admin.infrastructure.image-storage :as image-storage])
   (:import [javax.imageio ImageIO]))
 
 (defn extract-image-metadata [image-data]
-  (println "Starting metadata extraction for image:" 
-           (select-keys image-data [:filename :content-type]))
+  (log/debug "Extracting metadata from image:" 
+             (select-keys image-data [:filename :content-type]))
   (when image-data
     (try
       (let [temp-file (:tempfile image-data)]
-        (println "Checking temp file:" 
-                 {:exists? (and temp-file (.exists temp-file))
-                  :path (.getAbsolutePath temp-file)
-                  :size (.length temp-file)})
-        (if (and temp-file 
-                 (.exists temp-file)
-                 (pos? (.length temp-file)))  ;; 파일 크기 체크 추가
-          (let [input-stream (ImageIO/createImageInputStream temp-file)]
-            (println "Created ImageInputStream")
-            (let [readers (ImageIO/getImageReaders input-stream)]
-              (println "Got image readers, has next?" (.hasNext readers))
-              (if (.hasNext readers)
-                (let [reader (.next readers)]
-                  (println "Using reader:" (.getClass reader))
-                  (.setInput reader input-stream)
-                  (let [buffered-image (.read reader 0)]
-                    (println "Successfully read image")
-                    (let [metadata {:content-type (:content-type image-data)
-                                  :size (.length temp-file)
-                                  :width (.getWidth buffered-image)
-                                  :height (.getHeight buffered-image)}]
-                      (println "Extracted metadata:" metadata)
-                      metadata)))
-                (do
-                  (println "No suitable image reader found")
-                  nil))))
-          (do
-            (println "File validation failed:" 
-                     {:exists? (.exists temp-file)
-                      :size (.length temp-file)})
-            nil)))
+        (when (and temp-file (.exists temp-file) (pos? (.length temp-file)))
+          (let [input-stream (ImageIO/createImageInputStream temp-file)
+                readers (ImageIO/getImageReaders input-stream)]
+            (when (.hasNext readers)
+              (let [reader (.next readers)]
+                (.setInput reader input-stream)
+                (let [buffered-image (.read reader 0)
+                      metadata {:content-type (:content-type image-data)
+                              :size (.length temp-file)
+                              :width (.getWidth buffered-image)
+                              :height (.getHeight buffered-image)}]
+                  (log/debug "Successfully extracted image metadata:" metadata)
+                  metadata))))))
       (catch Exception e
-        (println "Error during metadata extraction:" 
-                 {:message (.getMessage e)
-                  :type (.getName (.getClass e))})
-        (.printStackTrace e)
+        (log/error e "Failed to extract image metadata")
         nil))))
 
 (defn process-and-store-image [image-storage image-data]
-  (println "Starting image processing with data:" 
+  (log/debug "Starting image processing with data:" 
            (select-keys image-data [:filename :content-type :size]))
   (if image-data
     (let [metadata (extract-image-metadata image-data)]
@@ -75,18 +55,15 @@
       (r/success nil))))
 
 (^:export defn create-comic-workflow [image-storage comic-data]
-  (println "Starting comic workflow with data:" comic-data)
+  (log/debug "Starting comic creation workflow")
   (-> (r/success comic-data)
       (r/bind #(types/create-unvalidated-comic %))
-      ;; 만화 정보 검증
       (r/bind (fn [unvalidated]
-                (println "Validating comic data:" unvalidated)
-                (-> (types/create-validated-comic 
-                     (dissoc unvalidated :cover-image))
+                (log/debug "Validating comic data")
+                (-> (types/create-validated-comic (dissoc unvalidated :cover-image))
                     (r/map (fn [validated]
                             {:comic validated
                              :events [(types/create-comic-validated validated)]})))))
-      ;; 이미지 처리
       (r/bind (fn [{:keys [comic events]}]
                 (println "Processing image for comic:" comic)
                 (-> (process-and-store-image image-storage (:cover-image comic-data))

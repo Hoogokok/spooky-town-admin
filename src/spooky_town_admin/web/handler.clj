@@ -1,8 +1,8 @@
 (ns spooky-town-admin.web.handler
   (:require
    [spooky-town-admin.application.comic-service :as comic-service]
-   [spooky-town-admin.domain.comic.types :as types]
-   [spooky-town-admin.domain.common.result :as r]))
+   [spooky-town-admin.domain.common.result :as r]
+   [clojure.tools.logging :as log]))
 
 (defn- handle-result [result]
   (if (r/success? result)
@@ -44,19 +44,20 @@
 
 (defn create-comic [service body-params]
   (try
-    (println "Received body params:" body-params)
+    (log/debug "Received create comic request with params:" body-params)
     (if (nil? body-params)
-      {:status 400
-       :body {:error :validation
-              :message "요청 본문이 비어있습니다."}}
+      (do
+        (log/warn "Empty request body received")
+        {:status 400
+         :body {:error :validation
+                :message "요청 본문이 비어있습니다."}})
       (let [result (comic-service/create-comic service body-params)]
         (if (r/success? result)
           {:status 201
            :body (:value result)}
-          (handle-result result))))  ;; handle-result 함수 사용
+          (handle-result result))))
     (catch Exception e
-      (println "Create comic error:" (.getMessage e))
-      (.printStackTrace e)
+      (log/error e "Failed to create comic")
       {:status 500
        :body {:error :unknown
               :message "알 수 없는 오류가 발생했습니다."

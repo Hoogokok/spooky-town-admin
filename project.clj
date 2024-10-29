@@ -29,7 +29,11 @@
                  ;; testcontainers 테스트 데이터베이스 라이브러리
                  [org.testcontainers/testcontainers "1.19.3"]
                  [org.testcontainers/postgresql "1.19.3"]
-                 [org.testcontainers/jdbc "1.19.3"]]
+                 [org.testcontainers/jdbc "1.19.3"]
+                 ;;로깅 
+                 [org.clojure/tools.logging "1.2.4"]
+                 [ch.qos.logback/logback-classic "1.4.11"]
+                 ]
   ;;저장소 설정 추가
   :repositories [["central" "https://repo1.maven.org/maven2/"]
                  ["clojars" "https://repo.clojars.org/"]]
