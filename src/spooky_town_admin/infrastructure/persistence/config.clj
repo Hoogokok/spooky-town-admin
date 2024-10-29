@@ -18,16 +18,22 @@
    :user (or (env :postgres-user) "postgres")
    :password (or (env :postgres-password) "postgres")})
 
-(defn- create-datasource []
-  (let [config {:adapter "postgresql"
-                :database-name (:dbname db-spec)
-                :server-name (:host db-spec)
-                :port-number (:port db-spec)
-                :username (:user db-spec)
-                :password (:password db-spec)
-                :maximum-pool-size 10
-                :pool-name "spooky-town-pool"}]
-    (hikari/make-datasource config)))
+(defn create-datasource
+  "데이터베이스 연결을 위한 DataSource 생성"
+  ([db-spec]
+   (if (:jdbcUrl db-spec)
+     (jdbc/get-datasource db-spec)  ; 기존 jdbcUrl 형식 지원
+     (create-datasource 
+       (:dbtype db-spec) 
+       (:dbname db-spec) 
+       (:host db-spec) 
+       (:port db-spec) 
+       (:user db-spec) 
+       (:password db-spec))))
+  ([dbtype dbname host port user password]
+   (let [jdbc-url (format "jdbc:%s://%s:%d/%s?user=%s&password=%s"
+                         dbtype host port dbname user password)]
+     (jdbc/get-datasource {:jdbcUrl jdbc-url}))))
 
 (def migratus-config
   {:store :database
