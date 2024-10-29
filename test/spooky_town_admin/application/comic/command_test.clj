@@ -10,7 +10,8 @@
    [spooky-town-admin.infrastructure.image-storage :as image-storage]
    [spooky-town-admin.infrastructure.persistence :as persistence]
    [spooky-town-admin.infrastructure.persistence.config :as db-config]
-   [spooky-town-admin.infrastructure.persistence.postgresql :as postgresql])
+   [spooky-town-admin.infrastructure.persistence.postgresql :as postgresql]
+   [spooky-town-admin.infrastructure.persistence.protocol :as protocol]) ;; 추가
   (:import
    [java.awt.image BufferedImage]
    [java.io File]
@@ -152,21 +153,64 @@
             publishers (persistence/find-publishers-by-comic-id publisher-repo comic-id)]
         (is (r/success? publishers))
         (is (= 1 (count (r/value publishers))))
-        (is (= "테스트 출판사" (:name (first (r/value publishers)))))))))
+        (is (= "테스트 출판사" (:name (first (r/value publishers))))))))
 
-(deftest create-comic-without-publisher-test
-  (testing "만화 생성 - 출판사 없이 생성"
+  (testing "만화 생성 - 동일 출판사로 여러 만화 생성"
     (let [service (service/create-comic-service {})
           test-image (create-test-image 100 100)
-          comic-data (-> test-comic-data
-                        (assoc :isbn13 "9791193534168"
-                               :isbn10 "119353416X"
-                               :cover-image test-image)
-                        (dissoc :publisher))
-          result (command/create-comic service comic-data)]
-      (is (r/success? result))
-      (let [comic-id (:id (r/value result))
-            publisher-repo (persistence/create-publisher-repository)
-            publishers (persistence/find-publishers-by-comic-id publisher-repo comic-id)]
-        (is (r/success? publishers))
-        (is (empty? (r/value publishers)))))))
+          comic1-data (assoc test-comic-data 
+                            :isbn13 "9791193534168"
+                            :isbn10 "119353416X"
+                            :cover-image test-image
+                            :publisher "테스트 출판사")
+          comic2-data (assoc test-comic-data 
+                            :isbn13 "9791193534169"
+                            :isbn10 "119353416Y"
+                            :cover-image test-image
+                            :publisher "테스트 출판사")
+          result1 (command/create-comic service comic1-data)
+          result2 (command/create-comic service comic2-data)]
+      (is (r/success? result1))
+      (is (r/success? result2))
+      (let [publisher-repo (persistence/create-publisher-repository)
+            publishers1 (persistence/find-publishers-by-comic-id 
+                        publisher-repo 
+                        (:id (r/value result1)))
+            publishers2 (persistence/find-publishers-by-comic-id 
+                        publisher-repo 
+                        (:id (r/value result2)))]
+        ;; 두 만화 모두 같은 출판사와 연결되어야 함
+        (is (= (get-in publishers1 [:value 0 :id])
+               (get-in publishers2 [:value 0 :id])))))))
+
+(deftest create-comic-transaction-test
+  (testing "만화 생성 - 트랜잭션 롤백"
+    (let [service (service/create-comic-service {})
+          test-image (create-test-image 100 100)
+          comic-data (assoc test-comic-data 
+                           :isbn13 "9791193534168"
+                           :isbn10 "119353416X"
+                           :cover-image test-image
+                           :publisher "테스트 출판사")
+          ;; 출판사 저장을 실패하게 만드는 mock repository
+          failing-publisher-repo (reify protocol/PublisherRepository
+                                 (save-publisher [_ _]
+                                   (r/failure (errors/system-error 
+                                              :db-error 
+                                              "Failed to save publisher")))
+                                 (find-publisher-by-id [_ _] (r/success nil))
+                                 (find-publisher-by-name [_ _] (r/success nil))
+                                 (find-publishers-by-comic-id [_ _] (r/success []))
+                                 (associate-publisher-with-comic [_ _ _] (r/success true)))]
+      (with-redefs [persistence/create-publisher-repository 
+                    (constantly failing-publisher-repo)]
+        (let [result (command/create-comic service comic-data)]
+          (is (not (r/success? result)))
+          (is (= :db-error (:code (:error result))))
+          ;; 만화도 저장되지 않아야 함
+          (let [comic-repo (persistence/create-comic-repository)
+                find-result (persistence/find-comic-by-isbn 
+                            comic-repo 
+                            (:isbn13 comic-data))]
+            (is (r/success? find-result))
+            (is (nil? (r/value find-result)))))))))
