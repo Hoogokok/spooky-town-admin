@@ -6,7 +6,7 @@
    [next.jdbc :as jdbc]
    [next.jdbc.result-set :as rs]
    [spooky-town-admin.domain.comic.errors :as errors]
-   [spooky-town-admin.domain.common.result :as r]
+   [spooky-town-admin.core.result :as r]
    [spooky-town-admin.infrastructure.persistence.config :as config]
    [spooky-town-admin.infrastructure.persistence.protocol :refer [ComicRepository]])
   (:import

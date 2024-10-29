@@ -1,6 +1,6 @@
 (ns spooky-town-admin.infrastructure.persistence.transaction
   (:require [next.jdbc :as jdbc]
-            [spooky-town-admin.domain.common.result :as r]
+            [spooky-town-admin.core.result :as r]
             [spooky-town-admin.domain.comic.errors :as errors]
             [spooky-town-admin.infrastructure.persistence.config :as config]
             [clojure.tools.logging :as log]))

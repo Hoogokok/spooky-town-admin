@@ -5,8 +5,7 @@
                                                   get-validation-message
                                                   validation-error]]
    [spooky-town-admin.domain.comic.errors :as errors]
-   [spooky-town-admin.domain.common.result :refer [failure success]]
-   [spooky-town-admin.domain.common.result :as r]
+   [spooky-town-admin.core.result :as r :refer [failure success]] 
    [clojure.tools.logging :as log]))
 
 ;; --------- 유효성 검사 헬퍼 함수들 ---------

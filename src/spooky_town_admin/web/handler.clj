@@ -1,7 +1,7 @@
 (ns spooky-town-admin.web.handler
   (:require
    [spooky-town-admin.application.comic-service :as comic-service]
-   [spooky-town-admin.domain.common.result :as r]
+   [spooky-town-admin.core.result :as r]
    [clojure.tools.logging :as log]))
 
 (defn- handle-result [result]

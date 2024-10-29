@@ -4,7 +4,7 @@
    [clojure.tools.logging :as log]
    [spooky-town-admin.domain.comic.errors :as errors]
    [spooky-town-admin.domain.comic.workflow :as workflow]
-   [spooky-town-admin.domain.common.result :as r]
+   [spooky-town-admin.core.result :as r]
    [spooky-town-admin.infrastructure.image-storage :as image-storage]
    [spooky-town-admin.infrastructure.persistence :as persistence]
    [spooky-town-admin.infrastructure.persistence.transaction :refer [with-transaction]]))

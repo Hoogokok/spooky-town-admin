@@ -2,7 +2,7 @@
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
    [spooky-town-admin.domain.comic.workflow :as workflow]
-   [spooky-town-admin.domain.common.result :refer [failure success success?]]
+   [spooky-town-admin.core.result :refer [failure success success?]]
    [spooky-town-admin.infrastructure.image-storage :as image-storage]))
 
 ;; 테스트 데이터
