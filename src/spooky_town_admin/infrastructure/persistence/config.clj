@@ -2,7 +2,7 @@
   (:require [next.jdbc :as jdbc]
             [next.jdbc.connection :as connection]
             [hikari-cp.core :as hikari]
-            [spooky-town-admin.domain.common.result :as r]
+            [spooky-town-admin.core.result :as r]
             [spooky-town-admin.domain.comic.errors :as errors]
             [migratus.core :as migratus]
             [environ.core :refer [env]])
