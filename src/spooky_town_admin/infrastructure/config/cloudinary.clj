@@ -7,9 +7,9 @@
 
 (defn validate-config []
   (let [;; System/getenv를 사용하여 직접 환경 변수 읽기
-        cloud-name (env :CLOUDINARY_CLOUD_NAME)
-        api-key (env :CLOUDINARY_API_KEY)
-        api-secret (env :CLOUDINARY_API_SECRET)]
+        cloud-name (env :cloudinary-cloud-name)
+        api-key (env :cloudinary-api-key)
+        api-secret (env :cloudinary-api-secret)]
     
     (println "Cloudinary config values:"
              {:cloud-name (when cloud-name "***")  ;; 실제 값 대신 *** 출력
@@ -22,9 +22,9 @@
                   :api-secret api-secret})
       (do
         (println "Missing Cloudinary configuration. Available env vars:"
-                 {:CLOUDINARY_CLOUD_NAME (boolean cloud-name)
-                  :CLOUDINARY_API_KEY (boolean api-key)
-                  :CLOUDINARY_API_SECRET (boolean api-secret)})
+                 {:cloudinary-cloud-name (boolean cloud-name)
+                  :cloudinary-api-key (boolean api-key)
+                  :cloudinary-api-secret (boolean api-secret)})
         (r/failure (errors/system-error
                     :config-error
                     "Required Cloudinary configuration is missing"
