@@ -4,17 +4,18 @@
             [spooky-town-admin.domain.comic.errors :as errors]
             [spooky-town-admin.infrastructure.persistence.config :as config]))
 
+(def ^:dynamic *current-tx* nil)
+
 (defn with-transaction* [f]
   (println "Starting transaction with function:" f)
   (if-let [ds (config/get-datasource)]
     (try 
-      (let [result (jdbc/with-transaction [tx ds]
-                     (println "Transaction started with connection:" tx)
-                     (let [execution-result (f tx)]
-                       (println "Transaction execution result:" execution-result)
-                       execution-result))]
-        (println "Final transaction result:" result)
-        result)
+      (jdbc/with-transaction [tx ds]
+        (binding [*current-tx* tx]
+          (println "Transaction started with connection:" tx)
+          (let [result (f tx)]
+            (println "Transaction execution result:" result)
+            result)))
       (catch Exception e
         (println "Transaction failed:" (.getMessage e))
         (.printStackTrace e)
@@ -34,5 +35,10 @@
 (defmacro with-transaction [& body]
   `(with-transaction* 
      (fn [tx#]
-       (println "Executing transaction body with tx:" tx#)
-       ~@body)))
+       (binding [*current-tx* tx#]
+         (println "Executing transaction body with tx:" tx#)
+         ~@body))))
+
+(defn get-current-tx []
+  (or *current-tx* 
+      (config/get-datasource)))
