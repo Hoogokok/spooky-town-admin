@@ -42,7 +42,7 @@
       (let [ds (create-test-datasource container)]
         (println "Created datasource")
         (let [migration-config {:store :database
-                              :migration-dir "migrations/postgresql"  ;; resources/ 디렉토리 기준
+                              :migration-dir "db/migrations"  ;; 경로 수정
                               :db {:dbtype "postgresql"
                                   :dbname (.getDatabaseName container)
                                   :host "localhost"
