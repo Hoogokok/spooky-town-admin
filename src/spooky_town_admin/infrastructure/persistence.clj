@@ -14,6 +14,12 @@
     ;; 기본값은 인메모리 저장소
     (postgresql/create-repository)))
 
+(defn create-publisher-repository []
+  (case (keyword (env :environment))
+    :test (in-memory/create-publisher-repository)
+    :prod (postgresql/create-publisher-repository)
+    (postgresql/create-publisher-repository)))
+
 ;; 프로토콜 메서드를 외부에서 호출할 수 있는 함수들
 (defn save-comic [repo comic]
   (protocol/save-comic repo comic))

@@ -8,7 +8,7 @@
    [spooky-town-admin.domain.comic.errors :as errors]
    [spooky-town-admin.core.result :as r]
    [spooky-town-admin.infrastructure.persistence.config :as config]
-   [spooky-town-admin.infrastructure.persistence.protocol :refer [ComicRepository]])
+   [spooky-town-admin.infrastructure.persistence.protocol :refer [ComicRepository PublisherRepository]])
   (:import
    (java.sql Date)))  ;; java.sql.Date import 추가
 
@@ -183,8 +183,100 @@
             (errors/get-system-message :db-error)
             (.getMessage e)))))))
 
+(defrecord PostgresqlPublisherRepository [datasource]
+  PublisherRepository
+  (save-publisher [_ publisher]
+    (try
+      (let [query {:insert-into :publishers
+                   :values [{:name (:name publisher)}]
+                   :on-conflict [:name]
+                   :do-update-set {:updated_at :current_timestamp}
+                   :returning :*}]
+        (r/success
+         (jdbc/execute-one! datasource
+                           (sql/format query)
+                           {:builder-fn rs/as-unqualified-maps})))
+      (catch Exception e
+        (r/failure (errors/system-error
+                   :db-error
+                   (errors/get-system-message :db-error)
+                   (.getMessage e))))))
+
+  (find-publisher-by-id [_ id]
+    (try
+      (let [query {:select :*
+                   :from :publishers
+                   :where [:= :id id]}
+            result (jdbc/execute-one! datasource
+                                    (sql/format query)
+                                    {:builder-fn rs/as-unqualified-maps})]
+        (if result
+          (r/success result)
+          (r/failure (errors/business-error
+                     :not-found
+                     (errors/get-business-message :not-found)))))
+      (catch Exception e
+        (r/failure (errors/system-error
+                   :db-error
+                   (errors/get-system-message :db-error)
+                   (.getMessage e))))))
+
+  (find-publisher-by-name [_ name]
+    (try
+      (let [query {:select :*
+                   :from :publishers
+                   :where [:= :name name]}
+            result (jdbc/execute-one! datasource
+                                    (sql/format query)
+                                    {:builder-fn rs/as-unqualified-maps})]
+        (if result
+          (r/success result)
+          (r/success nil)))
+      (catch Exception e
+        (r/failure (errors/system-error
+                   :db-error
+                   (errors/get-system-message :db-error)
+                   (.getMessage e))))))
+
+  (find-publishers-by-comic-id [_ comic-id]
+    (try
+      (let [query {:select [:p.*]
+                   :from [[:publishers :p]]
+                   :join [[:comics_publishers :cp] [:= :p.id :cp.publisher_id]]
+                   :where [:= :cp.comic_id comic-id]}
+            result (jdbc/execute! datasource
+                                (sql/format query)
+                                {:builder-fn rs/as-unqualified-maps})]
+        (r/success result))
+      (catch Exception e
+        (r/failure (errors/system-error
+                   :db-error
+                   (errors/get-system-message :db-error)
+                   (.getMessage e))))))
+
+  (associate-publisher-with-comic [_ comic-id publisher-id]
+    (try
+      (let [query {:insert-into :comics_publishers
+                   :values [{:comic_id comic-id
+                            :publisher_id publisher-id}]
+                   :on-conflict [:comic_id :publisher_id]
+                   :do-nothing true}]
+        (jdbc/execute-one! datasource (sql/format query))
+        (r/success true))
+      (catch Exception e
+        (r/failure (errors/system-error
+                   :db-error
+                   (errors/get-system-message :db-error)
+                   (.getMessage e)))))))
+
 (defn create-repository []
   (if-let [ds (config/get-datasource)]  ;; get-datasource 함수 사용
     (->PostgresqlComicRepository ds)
+    (throw (ex-info "데이터소스가 초기화되지 않았습니다."
+                   {:type :db-error}))))
+
+(defn create-publisher-repository []
+  (if-let [ds (config/get-datasource)]
+    (->PostgresqlPublisherRepository ds)
     (throw (ex-info "데이터소스가 초기화되지 않았습니다."
                    {:type :db-error}))))
