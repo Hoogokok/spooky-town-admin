@@ -75,8 +75,8 @@
       (let [comic-repository (persistence/create-comic-repository)
             publisher-repository (persistence/create-publisher-repository)
             image-storage (image-storage/create-image-storage service)
-            publisher-validation (when-let [publisher-data (get-in comic-data [:publisher :value])]
-                                 (publisher/create-validated-publisher {:name publisher-data}))]
+              publisher-validation (when-let [publisher-name (:publisher comic-data)]
+                                 (publisher/create-validated-publisher {:name publisher-name}))]
         (if (and publisher-validation (r/failure? publisher-validation))
           publisher-validation
           (-> (check-duplicate-isbn comic-repository comic-data)

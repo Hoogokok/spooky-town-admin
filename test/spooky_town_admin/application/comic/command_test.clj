@@ -103,7 +103,7 @@
    :author "테스트 글작가"
    :isbn13 "9791198390110"  ;; 실제 ISBN-13
    :isbn10 "1198390115"     ;; 실제 ISBN-10
-   :publisher {:value "테스트 출판사"}
+   :publisher "테스트 출판사"
    :price 15000})
 
 ;; 테스트용 이미지 생성 헬퍼
@@ -160,7 +160,7 @@
                            :isbn13 "9788937834790"
                            :isbn10 "8937834790"
                            :cover-image test-image
-                           :publisher {:value "테스트 출판사"})
+                           :publisher "테스트 출판사")
           result (command/create-comic service comic-data)]
       (is (r/success? result))
       (let [comic-id (:id (r/value result))
@@ -177,12 +177,12 @@
                             :isbn13 "9788934950196"
                             :isbn10 "8934950196"
                             :cover-image test-image
-                            :publisher {:value "테스트 출판사"})
+                            :publisher "테스트 출판사")
           comic2-data (assoc test-comic-data 
                             :isbn13 "9788937833663"
                             :isbn10 "8937833662"
                             :cover-image test-image
-                            :publisher {:value "테스트 출판사"})
+                            :publisher "테스트 출판사")
           result1 (command/create-comic service comic1-data)
           result2 (command/create-comic service comic2-data)]
       (is (r/success? result1))
@@ -202,16 +202,16 @@
     (let [service (service/create-comic-service {})
           test-image (create-test-image 100 100)
           invalid-cases [{:name "빈 문자열"
-                         :publisher {:value ""}
+                         :publisher ""
                          :expected-error :invalid-publisher-name}
                         {:name "공백 문자열"
-                         :publisher {:value "   "}
+                         :publisher "   "
                          :expected-error :invalid-publisher-name}
                         {:name "최대 길이 초과"
-                         :publisher {:value (apply str (repeat 51 "가"))}
+                         :publisher (apply str (repeat 51 "가"))
                          :expected-error :invalid-publisher-name}
                         {:name "허용되지 않는 특수문자"
-                         :publisher {:value "Invalid!@#$"}
+                         :publisher "Invalid!@#$"
                          :expected-error :invalid-publisher-name}]]
       (doseq [{:keys [name publisher expected-error]} invalid-cases]
         (testing name
@@ -231,7 +231,7 @@
                            :isbn13 "9791198390110"
                            :isbn10 "1198390115"
                            :cover-image test-image
-                           :publisher {:value "테스트 출판사"})
+                           :publisher "테스트 출판사")
           failing-publisher-repo (reify protocol/PublisherRepository
                                  (save-publisher [_ publisher]
                                    (r/success {:id 1 :name (:name publisher)}))
