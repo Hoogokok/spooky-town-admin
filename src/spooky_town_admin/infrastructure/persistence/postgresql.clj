@@ -8,6 +8,8 @@
    [spooky-town-admin.core.result :as r]
    [spooky-town-admin.domain.comic.errors :as errors]
    [spooky-town-admin.domain.comic.publisher :as publisher]
+   [spooky-town-admin.domain.comic.types :refer [->Title ->Artist ->Author 
+                                                         ->ISBN13 ->ISBN10 ->Price ->PublicationDate ->PageCount ->Description]]
    [spooky-town-admin.infrastructure.persistence.config :as config]
    [spooky-town-admin.infrastructure.persistence.protocol :refer [ComicRepository
                                                                   PublisherRepository]]
@@ -28,51 +30,65 @@
 ;; 도메인 객체를 DB 레코드로 변환
 (defn- comic->db [comic]
   (log/debug "Converting comic to DB format:" comic)
-  (let [db-map (cond-> {}
-                 (:title comic)
-                 (assoc :title (get-in comic [:title :value]))
-
-                 (:artist comic)
-                 (assoc :artist (get-in comic [:artist :value]))
-
-                 (:author comic)
-                 (assoc :author (get-in comic [:author :value]))
-
-                 (:isbn13 comic)
-                 (assoc :isbn13 (get-in comic [:isbn13 :value]))
-
-                 (:isbn10 comic)
-                 (assoc :isbn10 (get-in comic [:isbn10 :value]))
-
-                 (:publication-date comic)
-                 (assoc :publication_date (get-in comic [:publication-date :value]))
-
-                 (:price comic)
-                 (assoc :price (get-in comic [:price :value]))
-
-                 (:page-count comic)
-                 (assoc :page_count (get-in comic [:page-count :value]))
-
-                 (:description comic)
-                 (assoc :description (get-in comic [:description :value])))]
-    (log/debug "Converted to DB format:" db-map)
-    db-map))
+  (let [result {:title (if (record? (:title comic))
+                        (:value (:title comic))
+                        (:title comic))
+               :artist (if (record? (:artist comic))
+                        (:value (:artist comic))
+                        (:artist comic))
+               :author (if (record? (:author comic))
+                       (:value (:author comic))
+                       (:author comic))
+               :isbn13 (if (record? (:isbn13 comic))
+                        (:value (:isbn13 comic))
+                        (:isbn13 comic))
+               :isbn10 (if (record? (:isbn10 comic))
+                        (:value (:isbn10 comic))
+                        (:isbn10 comic))
+               :price (when-let [price (:price comic)]
+                       (if (record? price)
+                         (:value price)
+                         price))
+               :image_url (:image-url comic)}]
+    (log/debug "Converted to DB format:" result)
+    result))
 
 ;; DB 레코드를 도메인 객체로 변환
 (defn- db->comic [row]
   (when row
     (cond-> {}
-      (:id row) (assoc :id (:id row))
-      (:title row) (assoc :title (:title row))
-      (:artist row) (assoc :artist (:artist row))
-      (:author row) (assoc :author (:author row))
-      (:isbn13 row) (assoc :isbn13 (:isbn13 row))
-      (:isbn10 row) (assoc :isbn10 (:isbn10 row))
-      (:publication_date row) (assoc :publication_date (:publication_date row))
-      (:price row) (assoc :price (:price row))
-      (:page_count row) (assoc :page_count (:page-count row))
-      (:description row) (assoc :description (:description row))
-      (:image_url row) (assoc :image_url (:image_url row)))))
+      (:id row) 
+      (assoc :id (:id row))
+      
+      (:title row) 
+      (assoc :title (->Title (:title row)))
+      
+      (:artist row) 
+      (assoc :artist (->Artist (:artist row)))
+      
+      (:author row) 
+      (assoc :author (->Author (:author row)))
+      
+      (:isbn13 row) 
+      (assoc :isbn13 (->ISBN13 (:isbn13 row)))
+      
+      (:isbn10 row) 
+      (assoc :isbn10 (->ISBN10 (:isbn10 row)))
+      
+      (:publication_date row) 
+      (assoc :publication-date (->PublicationDate (:publication_date row)))
+      
+      (:price row) 
+      (assoc :price (->Price (:price row)))
+      
+      (:page_count row) 
+      (assoc :page-count (->PageCount (:page_count row)))
+      
+      (:description row) 
+      (assoc :description (->Description (:description row)))
+      
+      (:image_url row) 
+      (assoc :image-url (:image_url row)))))
 
 (defrecord PostgresqlComicRepository [datasource]
   ComicRepository

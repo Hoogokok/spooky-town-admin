@@ -3,56 +3,58 @@
             [spooky-town-admin.infrastructure.persistence.postgresql :as sut]
             [spooky-town-admin.infrastructure.persistence.protocol :as protocol]
             [spooky-town-admin.core.result :as r]
+            [spooky-town-admin.domain.comic.types :refer [->Title ->Artist ->Author 
+                                                         ->ISBN13 ->ISBN10 ->Price]]
             [spooky-town-admin.infrastructure.persistence.test-helper :refer [test-fixture *test-datasource*]]))
 
 (use-fixtures :each test-fixture)
 
+(def test-comic-data
+  {:title (->Title "Test Comic")
+   :artist (->Artist "Test Artist")
+   :author (->Author "Test Author")
+   :isbn13 (->ISBN13 "9791234567890")
+   :isbn10 (->ISBN10 "1234567890")
+   :price (->Price 15000)})
+
 (deftest test-save-comic
   (testing "만화 저장"
     (let [repo (sut/->PostgresqlComicRepository *test-datasource*)
-          comic {:title "Test Comic"
-                :artist "Test Artist"
-                :author "Test Author"
-                :isbn13 "9791234567890"
-                :isbn10 "1234567890"}
-          result (protocol/save-comic repo comic)]
+          result (protocol/save-comic repo test-comic-data)]
       (is (r/success? result))
       (is (number? (:id (:value result)))))))
 
 (deftest test-find-comic-by-id
   (testing "ID로 만화 조회"
     (let [repo (sut/->PostgresqlComicRepository *test-datasource*)
-          comic {:title "Test Comic"
-                :artist "Test Artist"
-                :author "Test Author"
-                :isbn13 "9791234567890"
-                :isbn10 "1234567890"}
-          saved (protocol/save-comic repo comic)
+          saved (protocol/save-comic repo test-comic-data)
           id (get-in saved [:value :id])
           result (protocol/find-comic-by-id repo id)]
       (is (r/success? result))
       (let [found (:value result)]
-        (is (= (:title comic) (:title found)))
-        (is (= (:artist comic) (:artist found)))
-        (is (= (:author comic) (:author found)))))))
+        (is (= (get-in found [:title :value]) 
+               (get-in test-comic-data [:title :value])))
+        (is (= (get-in found [:artist :value]) 
+               (get-in test-comic-data [:artist :value])))
+        (is (= (get-in found [:author :value]) 
+               (get-in test-comic-data [:author :value])))))))
 
 (deftest test-find-comic-by-isbn
   (testing "ISBN으로 만화 조회"
     (let [repo (sut/->PostgresqlComicRepository *test-datasource*)
-          comic {:title "Test Comic"
-                :artist "Test Artist"
-                :author "Test Author"
-                :isbn13 "9791234567890"
-                :isbn10 "1234567890"}]
-      (protocol/save-comic repo comic)
-      (testing "ISBN13으로 조회"
-        (let [result (protocol/find-comic-by-isbn repo (:isbn13 comic))]
-          (is (r/success? result))
-          (is (= (:isbn13 comic) (:isbn13 (:value result))))))
-      (testing "ISBN10으로 조회"
-        (let [result (protocol/find-comic-by-isbn repo (:isbn10 comic))]
-          (is (r/success? result))
-          (is (= (:isbn10 comic) (:isbn10 (:value result)))))))))
+          comic {:title (->Title "Test Comic")
+                :artist (->Artist "Test Artist")
+                :author (->Author "Test Author")
+                :isbn13 (->ISBN13 "9791234567890")
+                :isbn10 (->ISBN10 "1234567890")}
+          saved (protocol/save-comic repo comic)
+          id (get-in saved [:value :id])]
+      (let [result (protocol/find-comic-by-isbn repo (:isbn10 comic))]
+        (is (r/success? result))
+        (is (= (get-in comic [:isbn13 :value])
+               (get-in (:value result) [:isbn13 :value])))
+        (is (= (get-in comic [:isbn10 :value])
+               (get-in (:value result) [:isbn10 :value])))))))
 
 (deftest test-delete-comic
   (testing "만화 삭제"
