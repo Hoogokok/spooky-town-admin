@@ -1,12 +1,19 @@
 (ns spooky-town-admin.domain.comic.types
   (:require
    [clojure.spec.alpha :as s]
+   [clojure.string :as string]
+   [clojure.tools.logging :as log]
+   [spooky-town-admin.core.result :as r :refer [failure success]]
    [spooky-town-admin.domain.comic.errors :refer [business-error
                                                   get-validation-message
+                                                  get-business-message
                                                   validation-error]]
-   [spooky-town-admin.domain.comic.errors :as errors]
-   [spooky-town-admin.core.result :as r :refer [failure success]] 
-   [clojure.tools.logging :as log]))
+   [spooky-town-admin.domain.comic.publisher :as publisher]
+   )
+  (:import [java.io File]
+           [java.nio.file Files Path]
+           [javax.imageio ImageIO]
+           [java.awt.image BufferedImage]))
 
 ;; --------- 유효성 검사 헬퍼 함수들 ---------
 (defn- calculate-isbn13-checksum [isbn]
@@ -41,7 +48,6 @@
 (s/def ::title-format (s/and string? #(<= 1 (count %) 100)))
 (s/def ::artist-format (s/and string? #(<= 1 (count %) 20)))
 (s/def ::author-format (s/and string? #(<= 1 (count %) 20)))
-(s/def ::publisher-format (s/and string? #(<= 1 (count %) 50)))
 (s/def ::publication-date-format #(re-matches #"^\d{4}-\d{2}-\d{2}$" %))
 (s/def ::price-format (s/and number? #(>= % 0)))
 (s/def ::page-count-format (s/and integer? pos?))
@@ -65,10 +71,6 @@
   (toString [_] value))
 
 (defrecord Author [value]
-  Object
-  (toString [_] value))
-
-(defrecord Publisher [value]
   Object
   (toString [_] value))
 
@@ -128,12 +130,6 @@
     (success (->Author value))
     (failure (validation-error :author (get-validation-message :author)))))
 
-(defn create-publisher [value]
-  (if (or (nil? value)
-          (s/valid? ::publisher-format value))
-    (success (when value (->Publisher value)))
-    (failure (validation-error :publisher (get-validation-message :publisher)))))
-
 (defn create-publication-date [value]
   (if (or (nil? value)
           (s/valid? ::publication-date-format value))
@@ -158,43 +154,79 @@
     (success (when value (->Description value)))
     (failure (validation-error :description (get-validation-message :description)))))
 
-;; --------- 이미지 관련 값 객체 ---------
+;; --------- 이미지 관련 값 객체와 도메인 규칙 ---------
 (def allowed-image-types #{"image/png" "image/gif" "image/jpeg" "image/webp" "image/svg+xml"})
 (def max-dimension 12000)
 (def max-area (* 100 1000000))  ;; 100 메가픽셀
 (def max-file-size (* 10 1024 1024))  ;; 10MB
 
-(defrecord ImageMetadata [content-type width height size]
-  Object
-  (toString [_] 
-    (format "Image[type=%s, %dx%d, %d bytes]" 
-            content-type width height size)))
+(defrecord UnvalidatedImageData [tempfile content-type size filename])
+(defrecord ValidatedImageData [metadata tempfile])
+(defrecord ImageMetadata [content-type width height size])
 
-(defn validate-image-metadata [image]
-  (if (or (nil? image)
-          (nil? (:width image))
-          (nil? (:height image)))
-    (do
-      (log/error "Invalid image metadata structure")
-      (r/failure (errors/validation-error :cover-image
-                                          (errors/get-image-error-message :invalid))))
-    (let [constraints [{:check #(contains? allowed-image-types (:content-type %))
-                       :error-type :type}
-                      {:check #(>= max-dimension (max (:width %) (:height %)))
-                       :error-type :dimensions}
-                      {:check #(>= max-area (* (:width %) (:height %)))
-                       :error-type :area}
-                      {:check #(>= max-file-size (:size %))
-                       :error-type :size}]]
-      (if-let [failed-constraint (first (filter #(not ((:check %) image)) constraints))]
-        (do
-          (log/error "Image validation failed:" (:error-type failed-constraint))
-          (r/failure (errors/validation-error 
-                      :cover-image 
-                      (errors/get-image-error-message (:error-type failed-constraint)))))
-        (do
-          (println "Image validation successful")
-          (r/success image))))))
+(defn validate-image-metadata [metadata-result]
+  (r/bind metadata-result
+    (fn [metadata]
+      (cond
+        (not (contains? allowed-image-types (:content-type metadata)))
+        (r/failure (validation-error 
+                    :cover-image 
+                    (get-validation-message :image-type)))
+        
+        (> (max (:width metadata) (:height metadata)) max-dimension)
+        (r/failure (validation-error 
+                    :cover-image 
+                    (get-validation-message :image-dimensions)))
+        
+        (> (* (:width metadata) (:height metadata)) max-area)
+        (r/failure (validation-error 
+                    :cover-image 
+                    (get-validation-message :image-area)))
+        
+        (> (:size metadata) max-file-size)
+        (r/failure (validation-error 
+                    :cover-image 
+                    (get-validation-message :image-size)))
+        
+        :else
+        (r/success metadata)))))
+
+(defn extract-image-metadata [image-data]
+  (try
+    (let [^File temp-file (:tempfile image-data)
+          ^BufferedImage image (ImageIO/read temp-file)
+          ^Path path (.toPath temp-file)
+          content-type (Files/probeContentType path)]
+      (r/success (->ImageMetadata 
+                  content-type
+                  (.getWidth image)
+                  (.getHeight image)
+                  (.length temp-file))))
+    (catch Exception e
+      (r/failure (validation-error 
+                  :cover-image 
+                  (get-validation-message :invalid-image))))))
+
+(defn validate-image-data [image-data]
+  (if (nil? image-data)
+    (r/success nil)
+    (cond
+      ;; 파일 크기가 0인 경우 검증
+      (zero? (:size image-data))
+      (r/failure (business-error 
+                  :invalid-image
+                  (get-business-message :invalid-image)))
+      
+      ;; 파일이 존재하지 않는 경우 검증
+      (not (.exists ^File (:tempfile image-data)))
+      (r/failure (business-error 
+                  :invalid-image
+                  (get-business-message :invalid-image)))
+      
+      :else
+      (-> (extract-image-metadata image-data)
+          (validate-image-metadata)
+          (r/map #(->ValidatedImageData % (:tempfile image-data)))))))
 
 ;; --------- 상태 전이를 나타내는 값 객체들 ---------
 (defrecord UnvalidatedComic [title artist author isbn13 isbn10 
@@ -207,12 +239,12 @@
                           ^Author author 
                           ^ISBN13 isbn13 
                           ^ISBN10 isbn10
-                          ^{:optional true} PublicationDate publication-date
-                          ^{:optional true} Publisher publisher
-                          ^{:optional true} Price price
-                          ^{:optional true} PageCount page-count
-                          ^{:optional true} Description description
-                          ^{:optional true} ImageMetadata cover-image-metadata])
+                          ^{:optional true} PublicationDate publication-date  ;; 선택
+                          ^{:optional true} Object publisher  ;; 선택
+                          ^{:optional true} Price price  ;; 선택
+                          ^{:optional true} PageCount page-count  ;; 선택
+                          ^{:optional true} Description description  ;; 선택
+                          ^{:optional true} ImageMetadata cover-image-metadata])  ;; 선택
 
 (defrecord PersistedComic [id validated-comic cover-image-url])
 
@@ -240,9 +272,9 @@
   (success (map->UnvalidatedComic data)))
 
 (defn create-validated-comic [{:keys [title artist author isbn13 isbn10
-                                   publication-date publisher price
-                                   page-count description
-                                   cover-image-metadata] :as data}]
+                                    publication-date publisher price
+                                    page-count description
+                                    cover-image-metadata] :as data}]
   (let [required-validations [(create-title title)
                              (create-artist artist)
                              (create-author author)
@@ -251,7 +283,7 @@
         optional-validations [(when (some? publication-date)
                                (create-publication-date publication-date))
                              (when (some? publisher)
-                               (create-publisher publisher))
+                              (publisher/create-validated-publisher publisher))
                              (when (some? price)
                                (create-price price))
                              (when (some? page-count)
@@ -260,6 +292,7 @@
                                (create-description description))]
         required-errors (keep #(when (not (:success %)) (:error %)) required-validations)
         optional-errors (keep #(when (and % (not (:success %))) (:error %)) optional-validations)]
+    
     (if (seq required-errors)
       (failure (first required-errors))
       (success (map->ValidatedComic 
@@ -271,7 +304,7 @@
                  :publication-date (when publication-date 
                                    (:value (create-publication-date publication-date)))
                  :publisher (when publisher 
-                            (:value (create-publisher publisher)))
+                            (:value (publisher/create-validated-publisher publisher)))
                  :price (when price 
                          (:value (create-price price)))
                  :page-count (when page-count 

@@ -1,19 +1,18 @@
 (ns spooky-town-admin.core
-  (:require [ring.adapter.jetty :as jetty]
-            [ring.middleware.json :refer [wrap-json-response wrap-json-body]]
-            [ring.middleware.multipart-params :refer [wrap-multipart-params]]
-            [ring.middleware.params :refer [wrap-params]]
-            [ring.middleware.keyword-params :refer [wrap-keyword-params]]
-            [ring.middleware.cors :refer [wrap-cors]]
-            [spooky-town-admin.web.routes :as routes]
-            [spooky-town-admin.application.comic-service :as comic-service]
-            [clojure.tools.logging :as log]
-            [ring.middleware.multipart-params.temp-file :as temp-file]
-            [spooky-town-admin.infrastructure.persistence.config :as db-config])
+  (:require
+   [clojure.tools.logging :as log]
+   [ring.adapter.jetty :as jetty]
+   [ring.middleware.cors :refer [wrap-cors]]
+   [ring.middleware.json :refer [wrap-json-response]]
+   [ring.middleware.keyword-params :refer [wrap-keyword-params]]
+   [ring.middleware.params :refer [wrap-params]]
+   [spooky-town-admin.application.comic.service :as service]
+   [spooky-town-admin.infrastructure.persistence.config :as db-config]
+   [spooky-town-admin.web.routes :as routes])
   (:gen-class))
 
 (defn create-app [env]
-  (let [service (comic-service/create-comic-service env)]
+  (let [service (service/create-comic-service env)]
     (-> (routes/create-app service)
         wrap-keyword-params
         wrap-params

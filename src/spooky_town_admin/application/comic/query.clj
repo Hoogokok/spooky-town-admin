@@ -4,16 +4,29 @@
    [spooky-town-admin.core.result :as r]
    [spooky-town-admin.infrastructure.persistence :as persistence]))
 
+(defn- domain->response [comic]
+  {:id (:id comic)
+   :title (get-in comic [:title :value])
+   :artist (get-in comic [:artist :value])
+   :author (get-in comic [:author :value])
+   :isbn13 (get-in comic [:isbn13 :value])
+   :isbn10 (get-in comic [:isbn10 :value])
+   :price (get-in comic [:price :value])
+   :image-url (:image-url comic)})
+
 (defn get-comic [{:keys [comic-repository]} id]
-  (-> (if-let [comic (persistence/find-comic-by-id comic-repository id)]
-        (r/success comic)
-        (r/failure (errors/business-error :not-found 
-                                        (errors/get-business-message :not-found))))
-      (r/map #(select-keys % [:id :title :artist :author :isbn13 :isbn10]))
-      r/to-map))
+  (let [result (persistence/find-comic-by-id comic-repository id)]
+    (if (r/success? result)
+      (let [comic (r/value result)]
+        (if comic
+          (r/success (domain->response comic))
+          (r/failure (errors/business-error 
+                      :not-found 
+                      (errors/get-business-message :not-found)))))
+      result)))
 
 (defn list-comics [{:keys [comic-repository]}]
-  (let [comics (persistence/list-comics comic-repository)]
-    {:success true
-     :comics (map #(select-keys % [:id :title :artist :author :isbn13 :isbn10])
-                  comics)})) 
+  (let [result (persistence/list-comics comic-repository)]
+    (if (r/success? result)
+      (r/success (map domain->response (r/value result)))
+      result))) 

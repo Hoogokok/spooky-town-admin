@@ -1,0 +1,1 @@
+CREATE INDEX idx_comics_isbn10 ON comics(isbn10); 

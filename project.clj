@@ -18,7 +18,7 @@
                  [com.cloudinary/cloudinary-taglib "1.36.0"]
                  ;;postgesql
                  [org.postgresql/postgresql "42.7.2"]
-                 [com.github.seancorfield/next.jdbc "1.3.925"]
+                 [com.github.seancorfield/next.jdbc "1.3.909"]
                  [com.github.seancorfield/honeysql "2.5.1103"]
                  ;;migratus 마이그레이션 라이브러리
                  [migratus "1.5.6"]

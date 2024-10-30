@@ -1,14 +1,11 @@
 (ns spooky-town-admin.infrastructure.image-storage
   (:require [spooky-town-admin.domain.comic.errors :as errors]
-            [spooky-town-admin.domain.common.result :as r]
+            [spooky-town-admin.core.result :as r]
             [spooky-town-admin.infrastructure.config.cloudinary :as cloud-config]
             [clojure.java.io :as io]
-            [clojure.tools.logging :as log])
-  (:import [java.io File]
-           [java.nio.file Files Path]
-           [javax.imageio ImageIO]
-           [java.awt.image BufferedImage]
-           [java.util UUID]
+            [clojure.tools.logging :as log]
+            [spooky-town-admin.domain.comic.types :as types])
+  (:import [java.util UUID]
            [com.cloudinary.utils ObjectUtils]
            [com.cloudinary Cloudinary]))
 
@@ -17,39 +14,6 @@
   (store-image [this image-data])
   (delete-image [this image-id])
   (get-image-url [this image-id]))
-
-;; 이미지 메타데이터 추출
-(defn extract-image-metadata [image-data]
-  (try
-    (let [^File temp-file (:tempfile image-data)
-          ^BufferedImage image (ImageIO/read temp-file)
-          ^Path path (.toPath temp-file)
-          content-type (Files/probeContentType path)]
-      (r/success {:width (.getWidth image)
-                 :height (.getHeight image)
-                 :content-type content-type
-                 :size (.length temp-file)}))
-    (catch Exception e
-      (r/failure (errors/system-error
-                  :image-processing-error
-                  (errors/get-system-message :image-processing-error)
-                  (.getMessage e))))))
-
-
-;; 테스트용 Mock CDN 저장소 구현
-(defrecord MockCDNImageStorage []
-  ImageStorage
-  (store-image [_ image-data]
-    (-> (extract-image-metadata image-data)
-        (r/map (fn [metadata]
-                 {:image-id (str (UUID/randomUUID))
-                  :metadata metadata}))))
-
-  (delete-image [_ image-id]
-    (r/success true))
-
-  (get-image-url [_ image-id]
-    (r/success (str "https://mock-cdn.example.com/images/" image-id))))
 
 ;; Cloudinary 저장소 구현소 
 (defrecord CloudinaryImageStorage [cloudinary]
@@ -109,6 +73,20 @@
                     :image-url-error
                     (errors/get-system-message :image-url-error)
                     (.getMessage e)))))))
+
+;; 테스트용 Mock CDN 저장소 구현
+(defrecord MockCDNImageStorage []
+  ImageStorage
+  (store-image [_ validated-image-data]
+    (let [metadata (:metadata validated-image-data)]
+      (r/success {:image-id (str (UUID/randomUUID))
+                 :metadata metadata})))
+
+  (delete-image [_ image-id]
+    (r/success true))
+
+  (get-image-url [_ image-id]
+    (r/success (str "https://mock-cdn.example.com/images/" image-id))))
 
 ;; 저장소 팩토리 함수들
 (defn create-mock-image-storage []

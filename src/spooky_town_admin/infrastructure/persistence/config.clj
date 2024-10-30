@@ -2,10 +2,11 @@
   (:require [next.jdbc :as jdbc]
             [next.jdbc.connection :as connection]
             [hikari-cp.core :as hikari]
-            [spooky-town-admin.domain.common.result :as r]
+            [spooky-town-admin.core.result :as r]
             [spooky-town-admin.domain.comic.errors :as errors]
             [migratus.core :as migratus]
-            [environ.core :refer [env]])
+            [environ.core :refer [env]]
+            [clojure.tools.logging :as log])
   (:import (com.zaxxer.hikari HikariDataSource)))
 
 (def ^:private datasource (atom nil))
@@ -35,11 +36,50 @@
                          dbtype host port dbname user password)]
      (jdbc/get-datasource {:jdbcUrl jdbc-url}))))
 
-(def migratus-config
+(defn create-migratus-config [db-spec env]
   {:store :database
-   :migration-dir "db/migrations"  ;; resources는 자동으로 클래스패스에 포함됨
+   :migration-dir (case env
+                   :test "db/migrations/test"      ;; 테스트용 마이그레이션
+                   :dev "db/migrations/dev"        ;; 개발 환경용
+                   "db/migrations/productions")    ;; 기본값 (운영)
    :db db-spec})
 
+(defn run-migrations! [{:keys [db env] :as config}]
+  (try
+    (log/info "Starting database migrations for environment:" env)
+    (let [ds (create-datasource db)
+          migration-config (create-migratus-config {:datasource ds} env)]
+      (log/debug "Running migrations with config:" migration-config)
+      (migratus/init migration-config)
+      (let [pending (migratus/pending-list migration-config)]
+        (if (seq pending)
+          (do
+            (log/info "Pending migrations:" pending)
+            (migratus/migrate migration-config)
+            (r/success {:migrated pending}))
+          (do
+            (log/info "No pending migrations")
+            (r/success {:migrated []})))))
+    (catch Exception e
+      (log/error e "Migration failed")
+      (r/failure (errors/system-error 
+                  :migration-failed 
+                  "Migration failed" 
+                  (.getMessage e))))))
+
+(defn rollback-migrations! [{:keys [db env]}]
+  (try
+    (log/info "Rolling back migrations for environment:" env)
+    (let [ds (create-datasource db)
+          migration-config (create-migratus-config {:datasource ds} env)]
+      (migratus/rollback migration-config)
+      (r/success true))
+    (catch Exception e
+      (log/error e "Rollback failed")
+      (r/failure (errors/system-error 
+                  :rollback-failed 
+                  "Rollback failed" 
+                  (.getMessage e))))))
 
 (defn init-db! []
   (when-not @datasource
@@ -47,9 +87,17 @@
       (reset! datasource ds)
       ;; 마이그레이션 실행
       (try
-        (migratus/migrate migratus-config)
+        (run-migrations! {:db db-spec :env :dev})
         (catch Exception e
           (.printStackTrace e))))))
+
+(defn set-datasource! 
+  "데이터소스를 설정합니다. nil을 전달하면 기존 데이터소스를 제거합니다."
+  [ds]
+  (when-let [old-ds @datasource]
+    (when (instance? HikariDataSource old-ds)
+      (.close ^HikariDataSource old-ds)))
+  (reset! datasource ds))
 
 (defn get-datasource []
   @datasource)
@@ -63,22 +111,3 @@
 
 (defn get-current-tx []
   *current-tx*)
-
-(defn run-migrations! [config]
-  (try
-    (println "Starting database migrations with config:" config)
-    (migratus/init config)
-    (let [pending (migratus/pending-list config)]
-      (if (seq pending)
-        (do
-          (println "Pending migrations:" pending)
-          (migratus/migrate config)
-          (r/success {:migrated pending}))
-        (do
-          (println "No pending migrations")
-          (r/success {:migrated []}))))
-    (catch Exception e
-      (println "Migration failed:" (.getMessage e))
-      (.printStackTrace e)
-      (r/failure {:error :migration-failed
-                  :message (.getMessage e)}))))

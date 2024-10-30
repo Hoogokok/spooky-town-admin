@@ -22,7 +22,6 @@
    {:title "제목의 길이는 1에서 100 사이여야 합니다."
     :artist "그림 작가의 길이는 1에서 20 사이여야 합니다."
     :author "글 작가의 길이는 1에서 20 사이여야 합니다."
-    :publisher "출판사의 길이는 1에서 50 사이여야 합니다."
     :isbn-13 "유효하지 않은 ISBN-13 형식입니다."
     :isbn-10 "유효하지 않은 ISBN-10 형식입니다."
     :publication-date "유효하지 않은 출판일 형식입니다. YYYY-MM-DD 형식이어야 합니다."
@@ -34,7 +33,11 @@
    :business
    {:duplicate-isbn "이미 존재하는 ISBN입니다."
     :invalid-publication-date "출판일은 미래일 수 없습니다."
-    :invalid-cover-image "표지 이미지가 요구사항을 충족하지 않습니다."}
+    :invalid-cover-image "표지 이미지가 요구사항을 충족하지 않습니다."
+    :duplicate-publisher "이미 등록된 출판사입니다."
+    :invalid-publisher-name "출판사 이름이 유효하지 않습니다. 한글, 영문, 숫자, 일부 특수문자(& . - ())만 사용할 수 있으며, 1-50자 사이여야 합니다."
+    :publisher-not-found "출판사를 찾을 수 없습니다."
+    :not-found "요청한 리소스를 찾을 수 없습니다."}
    
    :system
    {:db-error "데이터베이스 오류가 발생했습니다."
@@ -44,7 +47,9 @@
     :image-metadata-error "이미지 메타데이터 처리 중 오류가 발생했습니다."
     :config-error "필요한 Cloudinary 설정이 누락되었습니다."
     :cloudinary-error "Cloudinary 오류가 발생했습니다."
-    }})
+    :publisher-save-error "출판사 저장 중 오류가 발생했습니다."
+    :publisher-association-error "출판사 연관관계 생성에 실패했습니다."
+    :invalid-image "이미지 파일이 손상되었거나 읽을 수 없습니다."}})
 
 ;; 이미지 관련 에러 메시지
 (def image-error-messages

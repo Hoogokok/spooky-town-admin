@@ -12,6 +12,9 @@
 (defn success? [result]
   (:success result))
 
+(defn failure? [result]
+  (not (:success result)))
+
 (defn value [result]
   (:value result))
 
@@ -45,4 +48,12 @@
 (defn from-map [m]
   (if (:success m)
     (success (:value m))
-    (failure (:error m)))) 
+    (failure (:error m))))
+
+(defn bind-or-success
+  "첫 번째 결과가 성공이면 그대로 반환하고, 
+   실패이거나 nil이면 두 번째 함수를 실행합니다."
+  [result f]
+  (if (and result (success? result))
+    result
+    (f))) 

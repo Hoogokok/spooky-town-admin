@@ -1,8 +1,10 @@
 (ns spooky-town-admin.domain.comic.workflow-test
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
-   [spooky-town-admin.domain.comic.workflow :as workflow]
    [spooky-town-admin.core.result :refer [failure success success?]]
+   [spooky-town-admin.domain.comic.errors :as errors]
+   [spooky-town-admin.domain.comic.types :as types]
+   [spooky-town-admin.domain.comic.workflow :as workflow]
    [spooky-town-admin.infrastructure.image-storage :as image-storage]))
 
 ;; 테스트 데이터
@@ -16,10 +18,13 @@
    :price 15000})
 
 (def mock-image-data
-  {:filename "test.jpg"
-   :tempfile (java.io.File. "test.jpg")
-   :content-type "image/jpeg"
-   :size 1000})
+  (let [temp-file (java.io.File/createTempFile "test" ".jpg")]
+    (.deleteOnExit temp-file)  ;; 테스트 종료 후 파일 삭제
+    (spit temp-file "test data")  ;; 더미 데이터 작성
+    {:filename "test.jpg"
+     :tempfile temp-file
+     :content-type "image/jpeg"
+     :size 1000}))
 
 (def mock-image-metadata
   {:content-type "image/jpeg"
@@ -36,7 +41,10 @@
 ;; 테스트 픽스처
 (use-fixtures :each
   (fn [f]
-    (with-redefs [workflow/extract-image-metadata (constantly mock-image-metadata)]
+    (with-redefs [types/extract-image-metadata 
+                  (constantly (success mock-image-metadata))
+                  types/validate-image-metadata  ;; 추가: 이미지 메타데이터 검증 무시
+                  (constantly (success mock-image-metadata))]
       (f))))
 
 ;; 워크플로우 테스트
@@ -78,7 +86,8 @@
         (is (nil? (:value result)))))
     
     (testing "잘못된 이미지 데이터"
-      (with-redefs [workflow/extract-image-metadata (constantly nil)]
+      (with-redefs [types/validate-image-data 
+                    (fn [_] (failure (errors/validation-error :cover-image "잘못된 이미지")))]
         (let [result (workflow/process-and-store-image mock-storage mock-image-data)]
           (is (not (success? result)))
           (is (= :cover-image (get-in result [:error :field]))))))))
