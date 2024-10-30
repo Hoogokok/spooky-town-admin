@@ -1,14 +1,13 @@
 (ns spooky-town-admin.application.comic.query-test
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
-   [spooky-town-admin.application.comic.command :as command]
+   [clojure.tools.logging :as log]
    [spooky-town-admin.application.comic.query :as query]
    [spooky-town-admin.application.comic.service :as service]
    [spooky-town-admin.core.result :as r]
    [spooky-town-admin.infrastructure.persistence :as persistence]
    [spooky-town-admin.infrastructure.persistence.config :as db-config]
-   [spooky-town-admin.infrastructure.persistence.postgresql :as postgresql]
-   )
+   [spooky-town-admin.infrastructure.persistence.postgresql :as postgresql])
   (:import
    [org.testcontainers.containers PostgreSQLContainer]))
 
@@ -42,21 +41,24 @@
                    :user (.getUsername container)
                    :password (.getPassword container)}
             ds (db-config/create-datasource config)]
-        (println "Created test datasource")
-        (db-config/run-migrations! {:store :database
-                                  :migration-dir "db/migrations"
-                                  :db config})
-        (with-redefs [db-config/get-datasource (constantly ds)
-                     persistence/create-comic-repository 
-                     (fn [] (postgresql/->PostgresqlComicRepository ds))]
-          ;; 테스트 데이터 생성
-          (let [service (service/create-comic-service {})
-                result (command/create-comic service test-comic-data)]
-            (when-not (r/success? result)
-              (throw (ex-info "Failed to create test data" {:error (:error result)}))))
-          (f)))
+        (log/debug "Created test datasource")
+        (db-config/set-datasource! ds)
+        (db-config/run-migrations! {:db config :env :test})
+        (try
+          (with-redefs [persistence/create-comic-repository 
+                       (fn [] (postgresql/->PostgresqlComicRepository ds))]
+            ;; 테스트 데이터 삽입
+            (let [repo (postgresql/->PostgresqlComicRepository ds)
+                  result (persistence/save-comic repo test-comic-data)]
+              (when (r/failure? result)
+                (throw (ex-info "Failed to save test data" 
+                              {:error (r/error result)}))))
+            (f))
+          (finally
+            (db-config/rollback-migrations! {:db config :env :test}))))
       (finally
-        (.stop container)))))
+        (.stop container)
+        (db-config/set-datasource! nil)))))
 
 (use-fixtures :each test-fixture)
 
@@ -83,4 +85,5 @@
       (is (r/success? result))
       (let [comics (r/value result)]
         (is (seq comics))
-        (is (= "테스트 만화" (:title (first comics)))))))) 
+        (is (= (:title test-comic-data)  ;; 테스트 데이터와 비교
+               (:title (first comics)))))))) 

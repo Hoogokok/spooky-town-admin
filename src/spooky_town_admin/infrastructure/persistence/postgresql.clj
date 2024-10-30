@@ -110,10 +110,13 @@
 
   (find-comic-by-id [_ id]
     (try
-      (let [query {:select :*
+      (let [tx (transaction/get-current-tx)
+            query {:select :*
                    :from :comics
                    :where [:= :id id]}
-            result (jdbc/execute-one! datasource (sql/format query)
+            formatted-query (sql/format query)
+            _ (log/debug "Executing query:" formatted-query)
+            result (jdbc/execute-one! tx formatted-query
                                     {:builder-fn rs/as-unqualified-maps})]
         (if result
           (r/success (db->comic result))
@@ -201,16 +204,22 @@
 
   (list-comics [_]
     (try
-      (r/success          ;; Result 타입으로 변경
-        (->> (jdbc/execute! datasource (sql/format {:select :* :from :comics})
-                         {:builder-fn rs/as-unqualified-maps})
-             (map db->comic)))
+      (let [tx (transaction/get-current-tx)
+            query {:select [:*]
+                   :from [:comics]}
+            formatted-query (sql/format query)
+            _ (log/debug "Executing query:" formatted-query)
+            result (jdbc/execute! tx formatted-query
+                                  {:builder-fn rs/as-unqualified-maps})]
+        (log/debug "Found comics:" result)
+        (r/success (map db->comic result)))  ;; Result 타입으로 감싸서 반환
+      
       (catch Exception e
-        (r/failure       ;; Result 타입으로 변경
-          (errors/system-error 
-            :db-error 
-            (errors/get-system-message :db-error)
-            (.getMessage e)))))))
+        (log/error e "Failed to list comics")
+        (r/failure (errors/system-error
+                   :db-error
+                   (errors/get-system-message :db-error)
+                   (.getMessage e)))))))
 
 (defn- publisher->db [publisher]
   (when publisher
