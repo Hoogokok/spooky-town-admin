@@ -33,11 +33,20 @@
           "데이터소스가 초기화되지 않았습니다")))))
 
 (defmacro with-transaction [& body]
-  `(with-transaction* 
-     (fn [tx#]
-       (binding [*current-tx* tx#]
-         (log/debug "Executing transaction body with tx:" tx#)
-         ~@body))))
+  `(if-let [datasource# (config/get-datasource)]
+     (try
+       (jdbc/with-transaction [tx# datasource# {:isolation :serializable}]
+         (binding [*current-tx* tx#]
+           ~@body))
+       (catch Exception e#
+         (log/error e# "Transaction failed")
+         (r/failure (errors/system-error
+                    :db-error
+                    (errors/get-system-message :db-error)
+                    (.getMessage e#)))))
+     (r/failure (errors/system-error
+                :db-error
+                "데이터소스가 초기화되지 않았습니다."))))
 
 (defn get-current-tx []
   (or *current-tx* 

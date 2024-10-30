@@ -5,10 +5,13 @@
    [honey.sql :as sql]
    [next.jdbc :as jdbc]
    [next.jdbc.result-set :as rs]
-   [spooky-town-admin.domain.comic.errors :as errors]
    [spooky-town-admin.core.result :as r]
+   [spooky-town-admin.domain.comic.errors :as errors]
+   [spooky-town-admin.domain.comic.publisher :as publisher]
    [spooky-town-admin.infrastructure.persistence.config :as config]
-   [spooky-town-admin.infrastructure.persistence.protocol :refer [ComicRepository PublisherRepository]])
+   [spooky-town-admin.infrastructure.persistence.protocol :refer [ComicRepository
+                                                                  PublisherRepository]]
+   [spooky-town-admin.infrastructure.persistence.transaction :as transaction])
   (:import
    (java.sql Date)))  ;; java.sql.Date import 추가
 
@@ -26,45 +29,33 @@
 (defn- comic->db [comic]
   (log/debug "Converting comic to DB format:" comic)
   (let [db-map (cond-> {}
-                 ;; nil이 아닌 값만 맵에 추가하고, record 타입은 값을 추출
-                 (not (str/blank? (get-value (:title comic))))
-                 (assoc :title (get-value (:title comic)))
+                 (:title comic)
+                 (assoc :title (get-in comic [:title :value]))
 
-                 (not (str/blank? (get-value (:artist comic))))
-                 (assoc :artist (get-value (:artist comic)))
+                 (:artist comic)
+                 (assoc :artist (get-in comic [:artist :value]))
 
-                 (not (str/blank? (get-value (:author comic))))
-                 (assoc :author (get-value (:author comic)))
+                 (:author comic)
+                 (assoc :author (get-in comic [:author :value]))
 
-                 (not (str/blank? (get-value (:isbn13 comic))))
-                 (assoc :isbn13 (get-value (:isbn13 comic)))
+                 (:isbn13 comic)
+                 (assoc :isbn13 (get-in comic [:isbn13 :value]))
 
-                 (not (str/blank? (get-value (:isbn10 comic))))
-                 (assoc :isbn10 (get-value (:isbn10 comic)))
+                 (:isbn10 comic)
+                 (assoc :isbn10 (get-in comic [:isbn10 :value]))
 
                  (:publication-date comic)
-                 (assoc :publication_date (-> comic
-                                              :publication-date
-                                              get-value
-                                              to-sql-date))
-
-                 (not (str/blank? (get-value (:publisher comic))))
-                 (assoc :publisher (get-value (:publisher comic)))
+                 (assoc :publication_date (get-in comic [:publication-date :value]))
 
                  (:price comic)
-                 (assoc :price (when-let [p (get-value (:price comic))]
-                                 (bigdec p)))
+                 (assoc :price (get-in comic [:price :value]))
 
                  (:page-count comic)
-                 (assoc :page_count (get-value (:page-count comic)))
+                 (assoc :page_count (get-in comic [:page-count :value]))
 
-                 (not (str/blank? (get-value (:description comic))))
-                 (assoc :description (get-value (:description comic)))
-
-                 (not (str/blank? (get-value (:cover-image-url comic))))
-                 (assoc :image_url (get-value (:cover-image-url comic))))]
-
-    (log/debug "Converted DB map:" db-map)
+                 (:description comic)
+                 (assoc :description (get-in comic [:description :value])))]
+    (log/debug "Converted to DB format:" db-map)
     db-map))
 
 ;; DB 레코드를 도메인 객체로 변환
@@ -78,7 +69,6 @@
       (:isbn13 row) (assoc :isbn13 (:isbn13 row))
       (:isbn10 row) (assoc :isbn10 (:isbn10 row))
       (:publication_date row) (assoc :publication_date (:publication_date row))
-      (:publisher row) (assoc :publisher (:publisher row))
       (:price row) (assoc :price (:price row))
       (:page_count row) (assoc :page_count (:page-count row))
       (:description row) (assoc :description (:description row))
@@ -87,32 +77,20 @@
 (defrecord PostgresqlComicRepository [datasource]
   ComicRepository
   (save-comic [_ comic]
-    (try 
-      (let [comic-data (comic->db comic)
-            query (when (seq comic-data)
-                   {:insert-into :comics
-                    :values [comic-data]
-                    :returning :*})]
-        (when query
-          (log/debug "Generated SQL query:" (pr-str query)))
-        (if-let [formatted-query (when query (sql/format query))]
-          (let [result (jdbc/execute-one! datasource 
-                                        formatted-query
-                                        {:builder-fn rs/as-unqualified-maps})]
-            (log/debug "Database insert result:" result)
-            (r/success (db->comic result)))
-          (do
-            (log/warn "No valid data to insert")
-            (r/failure (errors/validation-error
-                        :invalid-data
-                        "No valid data to insert into database")))))
+    (try
+      (let [tx (transaction/get-current-tx)  ;; 현재 트랜잭션 컨텍스트 사용
+            db-comic (comic->db comic)
+            query {:insert-into :comics
+                  :values [db-comic]
+                  :returning :*}
+            result (jdbc/execute-one! tx (sql/format query)
+                                   {:builder-fn rs/as-unqualified-maps})]
+        (r/success (db->comic result)))
       (catch Exception e
-        (log/error e "Failed to save comic")
-        (r/failure
-          (errors/system-error
-            :db-error
-            (errors/get-system-message :db-error)
-            (.getMessage e))))))
+        (r/failure (errors/system-error
+                   :db-error
+                   (errors/get-system-message :db-error)
+                   (.getMessage e))))))
 
   (find-comic-by-id [_ id]
     (try
@@ -135,13 +113,18 @@
   (find-comic-by-isbn [_ isbn]
     (try
       (log/debug "Searching for comic with ISBN:" isbn)
-      (let [query {:select :*
-                   :from :comics
-                   :where [:or
-                          [:= :isbn13 isbn]
-                          [:= :isbn10 isbn]]}
+      (let [tx (transaction/get-current-tx)
+            isbn-value (if (record? isbn)  ;; record 타입 체크
+                        (get-in isbn [:value])
+                        isbn)
+            query {:select :*
+                  :from :comics
+                  :where [:or
+                         [:= :isbn13 (str isbn-value)]  ;; 문자열로 변환
+                         [:= :isbn10 (str isbn-value)]]}  ;; 문자열로 변환
             formatted-query (sql/format query)
-            result (jdbc/execute-one! datasource formatted-query
+            _ (log/debug "Executing query:" formatted-query)
+            result (jdbc/execute-one! tx formatted-query
                                     {:builder-fn rs/as-unqualified-maps})]
         (if result
           (do 
@@ -152,6 +135,36 @@
             (r/success nil))))
       (catch Exception e
         (log/error e "Failed to search comic by ISBN:" isbn)
+        (r/failure (errors/system-error 
+                    :db-error 
+                    (errors/get-system-message :db-error)
+                    (.getMessage e))))))
+
+  (find-comic-by-isbns [_ isbn13 isbn10]
+    (try
+      (log/debug "Searching for comic with ISBNs - ISBN13:" isbn13 "ISBN10:" isbn10)
+      (let [tx (transaction/get-current-tx)
+            conditions (filterv some? 
+                                [(when isbn13 [:= :isbn13 (str isbn13)])
+                                 (when isbn10 [:= :isbn10 (str isbn10)])])
+            where-clause (when (seq conditions)
+                            (into [:or] conditions))
+            query (cond-> {:select :*
+                          :from :comics}
+                   where-clause (assoc :where where-clause))
+            formatted-query (sql/format query)
+            _ (log/debug "Executing query:" formatted-query)
+            result (jdbc/execute-one! tx formatted-query
+                                    {:builder-fn rs/as-unqualified-maps})]
+        (if result
+          (do 
+            (log/debug "Found comic with ISBNs - Result:" result)
+            (r/success (db->comic result)))
+          (do
+            (log/debug "No comic found with ISBNs")
+            (r/success nil))))
+      (catch Exception e
+        (log/error e "Failed to search comic by ISBNs")
         (r/failure (errors/system-error 
                     :db-error 
                     (errors/get-system-message :db-error)
@@ -183,20 +196,33 @@
             (errors/get-system-message :db-error)
             (.getMessage e)))))))
 
+(defn- publisher->db [publisher]
+  (when publisher
+    {:name (if (record? (:name publisher))
+             (get-in publisher [:name :value])
+             (:name publisher))}))
+
+(defn- db->publisher [row]
+  (when row
+    (publisher/->PersistedPublisher (:id row) (:name row))))
+
 (defrecord PostgresqlPublisherRepository [datasource]
   PublisherRepository
   (save-publisher [_ publisher]
     (try
-      (let [query {:insert-into :publishers
-                   :values [{:name (:name publisher)}]
-                   :on-conflict [:name]
-                   :do-update-set {:updated_at :current_timestamp}
-                   :returning :*}]
-        (r/success
-         (jdbc/execute-one! datasource
-                           (sql/format query)
-                           {:builder-fn rs/as-unqualified-maps})))
+      (let [tx (transaction/get-current-tx)
+            db-publisher (publisher->db publisher)
+            query {:insert-into :publishers
+                  :values [db-publisher]
+                  :on-conflict [:name]
+                  :do-update-set {:name :EXCLUDED.name}
+                  :returning [:*]}
+            result (jdbc/execute-one! tx
+                                    (sql/format query)
+                                    {:builder-fn rs/as-unqualified-maps})]
+        (r/success (db->publisher result)))
       (catch Exception e
+        (log/error e "Failed to save publisher:" publisher)
         (r/failure (errors/system-error
                    :db-error
                    (errors/get-system-message :db-error)
@@ -204,14 +230,15 @@
 
   (find-publisher-by-id [_ id]
     (try
-      (let [query {:select :*
+      (let [tx (transaction/get-current-tx)
+            query {:select :*
                    :from :publishers
                    :where [:= :id id]}
-            result (jdbc/execute-one! datasource
+            result (jdbc/execute-one! tx
                                     (sql/format query)
                                     {:builder-fn rs/as-unqualified-maps})]
         (if result
-          (r/success result)
+          (r/success (db->publisher result))
           (r/failure (errors/business-error
                      :not-found
                      (errors/get-business-message :not-found)))))
@@ -229,9 +256,7 @@
             result (jdbc/execute-one! datasource
                                     (sql/format query)
                                     {:builder-fn rs/as-unqualified-maps})]
-        (if result
-          (r/success result)
-          (r/success nil)))
+        (r/success (db->publisher result)))
       (catch Exception e
         (r/failure (errors/system-error
                    :db-error
@@ -240,15 +265,19 @@
 
   (find-publishers-by-comic-id [_ comic-id]
     (try
-      (let [query {:select [:p.*]
+      (let [tx (transaction/get-current-tx)
+            query {:select [:p.*]
                    :from [[:publishers :p]]
                    :join [[:comics_publishers :cp] [:= :p.id :cp.publisher_id]]
                    :where [:= :cp.comic_id comic-id]}
-            result (jdbc/execute! datasource
-                                (sql/format query)
-                                {:builder-fn rs/as-unqualified-maps})]
-        (r/success result))
+            formatted-query (sql/format query)
+            _ (log/debug "Executing query:" formatted-query)
+            result (jdbc/execute! tx formatted-query
+                                  {:builder-fn rs/as-unqualified-maps})]
+        (log/debug "Found publishers for comic:" comic-id "Result:" result)
+        (r/success (map db->publisher result)))
       (catch Exception e
+        (log/error e "Failed to find publishers for comic ID:" comic-id)
         (r/failure (errors/system-error
                    :db-error
                    (errors/get-system-message :db-error)
@@ -256,14 +285,36 @@
 
   (associate-publisher-with-comic [_ comic-id publisher-id]
     (try
-      (let [query {:insert-into :comics_publishers
-                   :values [{:comic_id comic-id
-                            :publisher_id publisher-id}]
-                   :on-conflict [:comic_id :publisher_id]
-                   :do-nothing true}]
-        (jdbc/execute-one! datasource (sql/format query))
-        (r/success true))
+      (let [tx (transaction/get-current-tx)
+            ;; 먼저 comic과 publisher가 존재하는지 확인
+            comic-exists? (-> {:select [1]
+                             :from :comics
+                             :where [:= :id comic-id]}
+                            sql/format
+                            (->> (jdbc/execute-one! tx))
+                            boolean)
+            publisher-exists? (-> {:select [1]
+                                 :from :publishers
+                                 :where [:= :id publisher-id]}
+                                sql/format
+                                (->> (jdbc/execute-one! tx))
+                                boolean)]
+        (if (and comic-exists? publisher-exists?)
+          (let [query {:insert-into :comics_publishers
+                      :values [{:comic_id comic-id
+                              :publisher_id publisher-id}]}
+                _ (log/debug "Associating publisher" publisher-id "with comic" comic-id)
+                result (jdbc/execute-one! tx (sql/format query))]
+            (log/debug "Association result:" result)
+            (r/success true))
+          (do
+            (log/error "Comic or publisher not found. Comic exists:" comic-exists? "Publisher exists:" publisher-exists?)
+            (r/failure (errors/system-error
+                       :db-error
+                       "연관관계 생성 실패"
+                       "만화 또는 출판사가 존재하지 않습니다")))))
       (catch Exception e
+        (log/error e "Failed to associate publisher with comic. Comic ID:" comic-id "Publisher ID:" publisher-id)
         (r/failure (errors/system-error
                    :db-error
                    (errors/get-system-message :db-error)

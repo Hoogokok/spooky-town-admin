@@ -43,6 +43,9 @@
 (defn find-publisher-by-id [repo id]
   (protocol/find-publisher-by-id repo id))
 
+(defn find-comic-by-isbns [repo isbn13 isbn10]
+  (protocol/find-comic-by-isbns repo isbn13 isbn10))
+
 (defn find-publisher-by-name [repo name]
   (protocol/find-publisher-by-name repo name))
 
