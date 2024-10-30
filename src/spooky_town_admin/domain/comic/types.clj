@@ -6,6 +6,7 @@
    [spooky-town-admin.core.result :as r :refer [failure success]]
    [spooky-town-admin.domain.comic.errors :refer [business-error
                                                   get-validation-message
+                                                  get-business-message
                                                   validation-error]]
    [spooky-town-admin.domain.comic.publisher :as publisher]
    )
@@ -209,9 +210,23 @@
 (defn validate-image-data [image-data]
   (if (nil? image-data)
     (r/success nil)
-    (-> (extract-image-metadata image-data)
-        (validate-image-metadata)
-        (r/map #(->ValidatedImageData % (:tempfile image-data))))))
+    (cond
+      ;; 파일 크기가 0인 경우 검증
+      (zero? (:size image-data))
+      (r/failure (business-error 
+                  :invalid-image
+                  (get-business-message :invalid-image)))
+      
+      ;; 파일이 존재하지 않는 경우 검증
+      (not (.exists ^File (:tempfile image-data)))
+      (r/failure (business-error 
+                  :invalid-image
+                  (get-business-message :invalid-image)))
+      
+      :else
+      (-> (extract-image-metadata image-data)
+          (validate-image-metadata)
+          (r/map #(->ValidatedImageData % (:tempfile image-data)))))))
 
 ;; --------- 상태 전이를 나타내는 값 객체들 ---------
 (defrecord UnvalidatedComic [title artist author isbn13 isbn10 
