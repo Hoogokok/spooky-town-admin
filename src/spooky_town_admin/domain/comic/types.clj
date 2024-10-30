@@ -1,12 +1,13 @@
 (ns spooky-town-admin.domain.comic.types
   (:require
    [clojure.spec.alpha :as s]
+   [clojure.string :as string]
+   [clojure.tools.logging :as log]
+   [spooky-town-admin.core.result :as r :refer [failure success]]
    [spooky-town-admin.domain.comic.errors :refer [business-error
                                                   get-validation-message
                                                   validation-error]]
-   [spooky-town-admin.domain.comic.errors :as errors]
-   [spooky-town-admin.core.result :as r :refer [failure success]] 
-   [clojure.tools.logging :as log]))
+   [spooky-town-admin.domain.comic.publisher :as publisher]))
 
 ;; --------- 유효성 검사 헬퍼 함수들 ---------
 (defn- calculate-isbn13-checksum [isbn]
@@ -41,7 +42,6 @@
 (s/def ::title-format (s/and string? #(<= 1 (count %) 100)))
 (s/def ::artist-format (s/and string? #(<= 1 (count %) 20)))
 (s/def ::author-format (s/and string? #(<= 1 (count %) 20)))
-(s/def ::publisher-format (s/and string? #(<= 1 (count %) 50)))
 (s/def ::publication-date-format #(re-matches #"^\d{4}-\d{2}-\d{2}$" %))
 (s/def ::price-format (s/and number? #(>= % 0)))
 (s/def ::page-count-format (s/and integer? pos?))
@@ -65,10 +65,6 @@
   (toString [_] value))
 
 (defrecord Author [value]
-  Object
-  (toString [_] value))
-
-(defrecord Publisher [value]
   Object
   (toString [_] value))
 
@@ -128,12 +124,6 @@
     (success (->Author value))
     (failure (validation-error :author (get-validation-message :author)))))
 
-(defn create-publisher [value]
-  (if (or (nil? value)
-          (s/valid? ::publisher-format value))
-    (success (when value (->Publisher value)))
-    (failure (validation-error :publisher (get-validation-message :publisher)))))
-
 (defn create-publication-date [value]
   (if (or (nil? value)
           (s/valid? ::publication-date-format value))
@@ -176,8 +166,8 @@
           (nil? (:height image)))
     (do
       (log/error "Invalid image metadata structure")
-      (r/failure (errors/validation-error :cover-image
-                                          (errors/get-image-error-message :invalid))))
+      (failure (validation-error :cover-image
+                                 (get-validation-message :cover-image))))
     (let [constraints [{:check #(contains? allowed-image-types (:content-type %))
                        :error-type :type}
                       {:check #(>= max-dimension (max (:width %) (:height %)))
@@ -189,9 +179,8 @@
       (if-let [failed-constraint (first (filter #(not ((:check %) image)) constraints))]
         (do
           (log/error "Image validation failed:" (:error-type failed-constraint))
-          (r/failure (errors/validation-error 
-                      :cover-image 
-                      (errors/get-image-error-message (:error-type failed-constraint)))))
+          (failure (validation-error :cover-image 
+                      (get-validation-message (:error-type failed-constraint)))))
         (do
           (println "Image validation successful")
           (r/success image))))))
@@ -207,12 +196,12 @@
                           ^Author author 
                           ^ISBN13 isbn13 
                           ^ISBN10 isbn10
-                          ^{:optional true} PublicationDate publication-date
-                          ^{:optional true} Publisher publisher
-                          ^{:optional true} Price price
-                          ^{:optional true} PageCount page-count
-                          ^{:optional true} Description description
-                          ^{:optional true} ImageMetadata cover-image-metadata])
+                          ^{:optional true} PublicationDate publication-date  ;; 선택
+                          ^{:optional true} Object publisher  ;; 선택
+                          ^{:optional true} Price price  ;; 선택
+                          ^{:optional true} PageCount page-count  ;; 선택
+                          ^{:optional true} Description description  ;; 선택
+                          ^{:optional true} ImageMetadata cover-image-metadata])  ;; 선택
 
 (defrecord PersistedComic [id validated-comic cover-image-url])
 
@@ -240,9 +229,9 @@
   (success (map->UnvalidatedComic data)))
 
 (defn create-validated-comic [{:keys [title artist author isbn13 isbn10
-                                   publication-date publisher price
-                                   page-count description
-                                   cover-image-metadata] :as data}]
+                                    publication-date publisher price
+                                    page-count description
+                                    cover-image-metadata] :as data}]
   (let [required-validations [(create-title title)
                              (create-artist artist)
                              (create-author author)
@@ -251,7 +240,7 @@
         optional-validations [(when (some? publication-date)
                                (create-publication-date publication-date))
                              (when (some? publisher)
-                               (create-publisher publisher))
+                              (publisher/create-validated-publisher publisher))
                              (when (some? price)
                                (create-price price))
                              (when (some? page-count)
@@ -260,6 +249,7 @@
                                (create-description description))]
         required-errors (keep #(when (not (:success %)) (:error %)) required-validations)
         optional-errors (keep #(when (and % (not (:success %))) (:error %)) optional-validations)]
+    
     (if (seq required-errors)
       (failure (first required-errors))
       (success (map->ValidatedComic 
@@ -271,7 +261,7 @@
                  :publication-date (when publication-date 
                                    (:value (create-publication-date publication-date)))
                  :publisher (when publisher 
-                            (:value (create-publisher publisher)))
+                            (:value (publisher/create-validated-publisher publisher)))
                  :price (when price 
                          (:value (create-price price)))
                  :page-count (when page-count 
