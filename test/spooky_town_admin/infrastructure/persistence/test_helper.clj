@@ -1,62 +1,45 @@
 (ns spooky-town-admin.infrastructure.persistence.test-helper
-  (:require [next.jdbc :as jdbc]
-            [spooky-town-admin.infrastructure.persistence.config :as config]
-            [spooky-town-admin.core.result :as r]
-            [clojure.tools.logging :as log]
-            )
-  (:import [org.testcontainers.containers PostgreSQLContainer]
-           [com.zaxxer.hikari HikariConfig HikariDataSource]))
+  (:require [clojure.tools.logging :as log]
+            [spooky-town-admin.infrastructure.persistence.config :as db-config]
+            [spooky-town-admin.core.result :as r])
+  (:import [org.testcontainers.containers PostgreSQLContainer]))
 
 (def ^:dynamic *test-datasource* nil)
 
 (defn create-test-container []
-  (let [container (PostgreSQLContainer. "postgres:16")]
-    (doto container
-      (.withDatabaseName "test_db")
-      (.withUsername "test")
-      (.withPassword "test")
-      (.withExposedPorts (into-array Integer [(Integer. 5432)]))
-      (.withReuse true)
-      (.withTmpFs {"/var/lib/postgresql/data" "rw,noexec,nosuid,size=1024m"})
-      (.withEnv "POSTGRES_DB" "test_db")
-      (.withEnv "POSTGRES_USER" "test")
-      (.withEnv "POSTGRES_PASSWORD" "test"))))
-
-(defn create-test-datasource [container]
-  (let [config (doto (HikariConfig.)
-                (.setJdbcUrl (.getJdbcUrl container))
-                (.setUsername (.getUsername container))
-                (.setPassword (.getPassword container))
-                (.setMaximumPoolSize 2))]
-    (HikariDataSource. config)))
+  (doto (PostgreSQLContainer. "postgres:16")
+    (.withDatabaseName "test_db")
+    (.withUsername "test")
+    (.withPassword "test")))
 
 (defn test-fixture [f]
   (let [container (create-test-container)]
     (try
-      (log/info "Starting container...")
       (.start container)
-      (log/info "Container started. JDBC URL:" (.getJdbcUrl container))
-      (let [ds (create-test-datasource container)]
-        (log/info "Created datasource")
-        (let [migration-config {:store :database
-                              :migration-dir "db/migrations"
-                              :db {:dbtype "postgresql"
-                                  :dbname (.getDatabaseName container)
-                                  :host "localhost"
-                                  :port (.getMappedPort container 5432)
-                                  :user (.getUsername container)
-                                  :password (.getPassword container)}}]
-          (log/info "Running migrations with config:" (dissoc migration-config :db))
-          (let [migration-result (config/run-migrations! migration-config)]
-            (if (r/success? migration-result)
-              (do
-                (log/info "Migrations successful")
-                (binding [*test-datasource* ds]
-                  (f)))
-              (log/error "Migration failed:" migration-result)))))
-      (catch Exception e
-        (log/error "Error during test setup:" (.getMessage e))
-        (throw e))
+      (let [config {:dbtype "postgresql"
+                   :dbname (.getDatabaseName container)
+                   :host "localhost"
+                   :port (.getMappedPort container 5432)
+                   :user (.getUsername container)
+                   :password (.getPassword container)}
+            ds (db-config/create-datasource config)]
+        (log/debug "Created test datasource")
+        (db-config/set-datasource! ds)
+        ;; 테스트용 마이그레이션 실행
+        (let [migration-result (db-config/run-migrations! 
+                               {:db config 
+                                :env :test})]
+          (when (r/failure? migration-result)
+            (throw (ex-info "Migration failed" 
+                          {:error (r/error migration-result)}))))
+        (try
+          (binding [*test-datasource* ds]
+            (f))
+          (finally
+            ;; 테스트 종료 후 롤백
+            (db-config/rollback-migrations! 
+             {:db config 
+              :env :test}))))
       (finally
-        (log/info "Stopping container...")
-        (.stop container)))))
+        (.stop container)
+        (db-config/set-datasource! nil)))))
