@@ -1,8 +1,10 @@
 (ns spooky-town-admin.domain.comic.workflow-test
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
-   [spooky-town-admin.domain.comic.workflow :as workflow]
    [spooky-town-admin.core.result :refer [failure success success?]]
+   [spooky-town-admin.domain.comic.errors :as errors]
+   [spooky-town-admin.domain.comic.types :as types]
+   [spooky-town-admin.domain.comic.workflow :as workflow]
    [spooky-town-admin.infrastructure.image-storage :as image-storage]))
 
 ;; 테스트 데이터
@@ -36,7 +38,8 @@
 ;; 테스트 픽스처
 (use-fixtures :each
   (fn [f]
-    (with-redefs [workflow/extract-image-metadata (constantly mock-image-metadata)]
+    (with-redefs [types/extract-image-metadata 
+                  (constantly (success mock-image-metadata))]
       (f))))
 
 ;; 워크플로우 테스트
@@ -78,7 +81,8 @@
         (is (nil? (:value result)))))
     
     (testing "잘못된 이미지 데이터"
-      (with-redefs [workflow/extract-image-metadata (constantly nil)]
+      (with-redefs [types/validate-image-data 
+                    (fn [_] (failure (errors/validation-error :cover-image "잘못된 이미지")))]
         (let [result (workflow/process-and-store-image mock-storage mock-image-data)]
           (is (not (success? result)))
           (is (= :cover-image (get-in result [:error :field]))))))))
