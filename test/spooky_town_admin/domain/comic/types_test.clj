@@ -1,8 +1,7 @@
 (ns spooky-town-admin.domain.comic.types-test
   (:require [clojure.test :refer [deftest testing is use-fixtures]]
             [spooky-town-admin.domain.comic.types :as types]
-            [spooky-town-admin.core.result :refer [success? value]]
-            [spooky-town-admin.domain.comic.errors :refer [validation-error]]
+            [spooky-town-admin.core.result :refer [success? value]] 
             [spooky-town-admin.domain.comic.publisher :as publisher])
   (:import [java.awt.image BufferedImage]
            [javax.imageio ImageIO]
