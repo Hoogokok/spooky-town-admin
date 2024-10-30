@@ -1,9 +1,20 @@
 (ns spooky-town-admin.domain.comic.types-test
-  (:require [clojure.test :refer [deftest testing is]]
+  (:require [clojure.test :refer [deftest testing is use-fixtures]]
             [spooky-town-admin.domain.comic.types :as types]
-            [spooky-town-admin.core.result :refer [success? success failure]]
+            [spooky-town-admin.core.result :refer [success? value]]
             [spooky-town-admin.domain.comic.errors :refer [validation-error]]
-            [spooky-town-admin.domain.comic.publisher :as publisher]))
+            [spooky-town-admin.domain.comic.publisher :as publisher])
+  (:import [java.awt.image BufferedImage]
+           [javax.imageio ImageIO]
+           [java.io File ByteArrayInputStream ByteArrayOutputStream]))
+
+;; 테스트용 이미지 생성 헬퍼 함수
+(defn create-test-image [width height]
+  (let [image (BufferedImage. width height BufferedImage/TYPE_INT_RGB)
+        temp-file (File/createTempFile "test" ".jpg")]
+    (.deleteOnExit temp-file)
+    (ImageIO/write image "jpg" temp-file)
+    temp-file))
 
 (deftest value-objects-test
   (testing "ISBN-13 생성"
@@ -209,3 +220,43 @@
              (get-in result [:value :publisher :name :value])))  ;; :value 경로 추가
       (is (= (:cover-image-metadata data)
              (-> result :value :cover-image-metadata))))))
+
+(deftest image-validation-test
+  (testing "이미지 데이터 검증"
+    (let [test-file (create-test-image 800 600)
+          image-data (types/->UnvalidatedImageData 
+                      test-file
+                      "image/jpeg"
+                      (.length test-file)
+                      "test.jpg")]
+      
+      (testing "메타데이터 추출"
+        (let [result (types/extract-image-metadata image-data)]
+          (is (success? result))
+          (let [metadata (value result)]
+            (is (= "image/jpeg" (:content-type metadata)))
+            (is (= 800 (:width metadata)))
+            (is (= 600 (:height metadata)))
+            (is (pos? (:size metadata))))))
+      
+      (testing "이미지 데이터 검증"
+        (let [result (types/validate-image-data image-data)]
+          (is (success? result))
+          (is (instance? spooky_town_admin.domain.comic.types.ValidatedImageData 
+                        (value result)))))
+      
+      (testing "nil 이미지 데이터"
+        (let [result (types/validate-image-data nil)]
+          (is (success? result))
+          (is (nil? (value result)))))
+      
+      (testing "잘못된 크기의 이미지"
+        (let [large-file (create-test-image 13000 13000)
+              large-image-data (types/->UnvalidatedImageData 
+                               large-file
+                               "image/jpeg"
+                               (.length large-file)
+                               "large.jpg")
+              result (types/validate-image-data large-image-data)]
+          (is (not (success? result)))
+          (is (= :cover-image (:field (:error result)))))))))
