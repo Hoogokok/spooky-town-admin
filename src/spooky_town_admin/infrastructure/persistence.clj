@@ -2,8 +2,7 @@
   (:require [spooky-town-admin.infrastructure.persistence.protocol :as protocol]
             [spooky-town-admin.infrastructure.persistence.in-memory :as in-memory]
             [spooky-town-admin.infrastructure.persistence.postgresql :as postgresql]
-            [environ.core :refer [env]]
-            [spooky-town-admin.infrastructure.persistence.transaction :refer [with-transaction]]))
+            [environ.core :refer [env]]))
 
 (defn create-comic-repository
   "환경에 따른 저장소 인스턴스 생성"
@@ -11,7 +10,7 @@
   (case (keyword (env :environment))
     :test (in-memory/create-repository)
     :prod (postgresql/create-repository)
-    ;; 기본값은 인메모리 저장소
+    ;; 기본값은 PostgreSQL 저장소
     (postgresql/create-repository)))
 
 (defn create-publisher-repository []
