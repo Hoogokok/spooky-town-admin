@@ -1,6 +1,5 @@
 (ns spooky-town-admin.infrastructure.persistence.postgresql
-  (:require
-   [clojure.string :as str]
+  (:require 
    [clojure.tools.logging :as log]
    [honey.sql :as sql]
    [next.jdbc :as jdbc]
@@ -9,23 +8,12 @@
    [spooky-town-admin.domain.comic.errors :as errors]
    [spooky-town-admin.domain.comic.publisher :as publisher]
    [spooky-town-admin.domain.comic.types :refer [->Title ->Artist ->Author 
-                                                         ->ISBN13 ->ISBN10 ->Price ->PublicationDate ->PageCount ->Description]]
+                                                 ->ISBN13 ->ISBN10 ->Price ->PublicationDate ->PageCount ->Description]]
    [spooky-town-admin.infrastructure.persistence.config :as config]
    [spooky-town-admin.infrastructure.persistence.protocol :refer [ComicRepository
                                                                   PublisherRepository]]
-   [spooky-town-admin.infrastructure.persistence.transaction :as transaction])
-  (:import
-   (java.sql Date)))  ;; java.sql.Date import 추가
+   [spooky-town-admin.infrastructure.persistence.transaction :as transaction]))
 
-(defn- get-value [v]
-  (cond
-    (record? v) (:value v)  ;; record 타입인 경우 :value 키의 값을 가져옴
-    :else v))               ;; 그 외의 경우 값을 그대로 사용
-
-;; 날짜 변환 헬퍼 함수 추가
-(defn- to-sql-date [date-str]
-  (when date-str
-    (Date/valueOf date-str)))
 
 ;; 도메인 객체를 DB 레코드로 변환
 (defn- comic->db [comic]
