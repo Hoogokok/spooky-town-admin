@@ -1,92 +1,98 @@
 (ns spooky-town-admin.application.comic.command
   (:require
    [clojure.tools.logging :as log]
-   [spooky-town-admin.domain.comic.errors :as errors]
-   [spooky-town-admin.domain.comic.workflow :as workflow]
    [spooky-town-admin.core.result :as r]
+   [spooky-town-admin.domain.comic.errors :as errors]
+   [spooky-town-admin.domain.comic.publisher :as publisher]
+   [spooky-town-admin.domain.comic.workflow :as workflow]
+   [spooky-town-admin.infrastructure.image-storage :as image-storage]
    [spooky-town-admin.infrastructure.persistence :as persistence]
    [spooky-town-admin.infrastructure.persistence.transaction :refer [with-transaction]]))
 
 (defn- check-duplicate-isbn [comic-repository comic-data]
   (log/debug "Checking duplicate ISBN for:" comic-data)
-  (let [isbn (or (:isbn13 comic-data) (:isbn10 comic-data))
-        result (persistence/find-comic-by-isbn comic-repository isbn)]
+  (let [isbn13-value (when-let [isbn13 (:isbn13 comic-data)]
+                      (if (record? isbn13)
+                        (:value isbn13)
+                        isbn13))
+        isbn10-value (when-let [isbn10 (:isbn10 comic-data)]
+                      (if (record? isbn10)
+                        (:value isbn10)
+                        isbn10))
+        _ (log/debug "Extracted ISBNs - ISBN13:" isbn13-value "ISBN10:" isbn10-value)
+        result (persistence/find-comic-by-isbns comic-repository isbn13-value isbn10-value)]
     (if (and (r/success? result) 
              (some? (r/value result)))
       (do
-        (log/info "Duplicate ISBN found")
+        (log/info "Duplicate ISBN found - ISBN13:" isbn13-value "ISBN10:" isbn10-value)
         (r/failure (errors/business-error
                     :duplicate-isbn
                     (errors/get-business-message :duplicate-isbn))))
       (r/success comic-data))))
 
-(defn- save-comic-with-publisher [comic-repository publisher-repository comic image-url]
-  (try
-    (with-transaction
-      (let [;; 1. 출판사 정보가 있는 경우에만 저장/조회
-            publisher-result (when-let [publisher-name (get-in comic [:publisher :value])]
-                             (log/debug "Saving publisher:" publisher-name)
-                             (if (clojure.string/blank? publisher-name)
-                               (r/failure (errors/business-error
-                                          :invalid-publisher-name
-                                          (errors/get-business-message :invalid-publisher-name)))
-                               (let [existing-publisher (persistence/find-publisher-by-name 
-                                                       publisher-repository 
-                                                       publisher-name)]
-                                 (if (and (r/success? existing-publisher)
-                                        (some? (r/value existing-publisher)))
-                                   (r/success (r/value existing-publisher))
-                                   (persistence/save-publisher 
-                                    publisher-repository 
-                                    {:name publisher-name})))))
-            _ (when (r/failure? publisher-result)
-                (log/error "Failed to save publisher:" (r/error publisher-result)))
-            ;; 2. 만화 저장 (publisher 필드 제외)
-            comic-result (when (or (nil? publisher-result)
-                                 (r/success? publisher-result))
-                          (persistence/save-comic 
-                           comic-repository 
-                           (-> comic
-                               (update-in [:title :value] str)
-                               (update-in [:artist :value] str)
-                               (update-in [:author :value] str)
-                               (update-in [:isbn13 :value] str)
-                               (update-in [:isbn10 :value] str)
-                               (update-in [:price :value] identity)
-                               (dissoc :publisher)
-                               (assoc :image-url image-url))))]
-        (if (r/success? comic-result)
-          (do
-            ;; 3. 출판사가 있고 저장이 성공한 경우에만 연관 관계 생성
-            (when (and publisher-result 
-                      (r/success? publisher-result))
-              (let [comic-id (get-in comic-result [:value :id])
-                    publisher-id (get-in publisher-result [:value :id])]
-                (log/debug "Creating association between comic" comic-id "and publisher" publisher-id)
-                (let [assoc-result (persistence/associate-publisher-with-comic 
-                                   publisher-repository
-                                   comic-id
-                                   publisher-id)]
-                  (when (r/failure? assoc-result)
-                    (r/failure (errors/system-error
-                               :publisher-association-error
-                               (errors/get-system-message :publisher-association-error)
-                               "Failed to create association"))))))
-            ;; 4. 만화 저장 결과 반환
-            comic-result)
-          comic-result)))
-    (catch Exception e
-      (log/error e "Failed to save comic with publisher")
-      (r/failure (errors/system-error 
-                  :db-error 
-                  (errors/get-system-message :db-error)
-                  (.getMessage e))))))
+(defn- save-comic-with-publisher [comic-repository publisher-repository comic image-url validated-publisher]
+  (if validated-publisher
+    (let [publisher-name (publisher/get-name validated-publisher)]
+      (-> (persistence/find-publisher-by-name publisher-repository publisher-name)
+          (r/bind (fn [existing-publisher]
+                   (if existing-publisher
+                     (r/success existing-publisher)
+                     (persistence/save-publisher 
+                      publisher-repository 
+                      validated-publisher))))
+          (r/bind (fn [publisher-result]
+                   (when (nil? (:id publisher-result))
+                     (throw (ex-info "출판사 저장 실패" 
+                                   {:error (errors/system-error
+                                           :publisher-save-error
+                                           "출판사 저장에 실패했습니다"
+                                           "출판사 ID가 생성되지 않았습니다")})))
+                   (-> (persistence/save-comic 
+                        comic-repository 
+                        (assoc comic :image-url image-url))
+                       (r/bind (fn [comic-result]
+                                (when (nil? (:id comic-result))
+                                  (throw (ex-info "만화 저장 실패"
+                                                {:error (errors/system-error
+                                                        :comic-save-error
+                                                        "만화 저장에 실패했습니다"
+                                                        "만화 ID가 생성되지 않았습니다")})))
+                                (-> (persistence/associate-publisher-with-comic 
+                                     publisher-repository
+                                     (:id comic-result)
+                                     (:id publisher-result))
+                                    (r/bind (fn [_]
+                                            (log/debug "Successfully associated publisher" (:id publisher-result) 
+                                                      "with comic" (:id comic-result))
+                                            (r/success comic-result)))))))))))
+    ;; 출판사가 없는 경우 만화만 저장
+    (persistence/save-comic comic-repository 
+                          (assoc comic :image-url image-url))))
 
-(defn create-comic [{:keys [comic-repository publisher-repository image-storage] :as service} 
-                    comic-data]
+(defn create-comic [service comic-data]
   (with-transaction
-    (log/debug "Transaction started" (pr-str comic-data))
-    (-> (check-duplicate-isbn comic-repository comic-data)
-        (r/bind #(workflow/create-comic-workflow image-storage %))
-        (r/bind (fn [{:keys [comic image-url]}]
-                  (save-comic-with-publisher comic-repository publisher-repository comic image-url)))))) 
+    (try
+      (let [comic-repository (persistence/create-comic-repository)
+            publisher-repository (persistence/create-publisher-repository)
+            image-storage (image-storage/create-image-storage service)
+            publisher-validation (when-let [publisher-data (get-in comic-data [:publisher :value])]
+                                 (publisher/create-validated-publisher {:name publisher-data}))]
+        (if (and publisher-validation (r/failure? publisher-validation))
+          publisher-validation
+          (-> (check-duplicate-isbn comic-repository comic-data)
+              (r/bind #(workflow/create-comic-workflow image-storage %))
+              (r/bind (fn [{:keys [comic events]}]
+                       (save-comic-with-publisher comic-repository 
+                                                publisher-repository 
+                                                comic 
+                                                (:cover-image-url events)
+                                                (when publisher-validation 
+                                                  (r/value publisher-validation))))))))
+      (catch Exception e
+        (log/error e "Failed to create comic with publisher")
+        (if-let [error (get-in (ex-data e) [:error])]
+          (r/failure error)
+          (r/failure (errors/system-error 
+                     :db-error 
+                     (errors/get-system-message :db-error)
+                     (.getMessage e))))))))
