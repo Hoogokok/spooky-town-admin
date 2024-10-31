@@ -18,11 +18,11 @@
                  [com.cloudinary/cloudinary-taglib "1.36.0"]
                  ;;postgesql
                  [org.postgresql/postgresql "42.7.2"]
-                 [com.github.seancorfield/next.jdbc "1.3.909"]
+                 [com.github.seancorfield/next.jdbc "1.2.659"]
                  [com.github.seancorfield/honeysql "2.5.1103"]
                  ;;migratus 마이그레이션 라이브러리
-                 [migratus "1.5.6"]
-                 [hikari-cp "3.0.1"]            ;; hikari-cp 추가
+                 [migratus "1.3.5"]
+                 [hikari-cp "3.0.1"]
 
                  [org.slf4j/slf4j-log4j12 "2.0.12"] ;; migratus의 로깅 의존성
                  [com.zaxxer/HikariCP "5.1.0"] ;; 데이터소스 풀링 라이브러리
@@ -33,6 +33,7 @@
                  ;;로깅 
                  [org.clojure/tools.logging "1.2.4"]
                  [ch.qos.logback/logback-classic "1.4.11"]
+                 [org.clojure/java.jdbc "0.7.12"]  ;; 호환성을 위해 추가
                  ]
   ;;저장소 설정 추가
   :repositories [["central" "https://repo1.maven.org/maven2/"]
