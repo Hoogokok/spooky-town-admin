@@ -20,8 +20,8 @@
                  [org.postgresql/postgresql "42.7.2"]
                  [com.github.seancorfield/next.jdbc "1.2.659"]
                  [com.github.seancorfield/honeysql "2.5.1103"]
-                 ;;migratus 마이그레이션 라이브러리
-                 [migratus "1.3.5"]
+                 ;;ragtime
+                 [ragtime "0.8.1"]
                  [hikari-cp "3.0.1"]
 
                  [org.slf4j/slf4j-log4j12 "2.0.12"] ;; migratus의 로깅 의존성

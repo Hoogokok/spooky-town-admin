@@ -18,28 +18,21 @@
 ;; 도메인 객체를 DB 레코드로 변환
 (defn- comic->db [comic]
   (log/debug "Converting comic to DB format:" comic)
-  (let [result {:title (if (record? (:title comic))
-                        (:value (:title comic))
-                        (:title comic))
-               :artist (if (record? (:artist comic))
-                        (:value (:artist comic))
-                        (:artist comic))
-               :author (if (record? (:author comic))
-                       (:value (:author comic))
-                       (:author comic))
-               :isbn13 (if (record? (:isbn13 comic))
-                        (:value (:isbn13 comic))
-                        (:isbn13 comic))
-               :isbn10 (if (record? (:isbn10 comic))
-                        (:value (:isbn10 comic))
-                        (:isbn10 comic))
-               :price (when-let [price (:price comic)]
-                       (if (record? price)
-                         (:value price)
-                         price))
-               :image_url (:image-url comic)}]
-    (log/debug "Converted to DB format:" result)
-    result))
+  (let [get-value (fn [field]
+                    (cond
+                      (map? field) (:value field)
+                      (string? field) field
+                      :else (str field)))]
+    {:title (get-value (:title comic))
+     :artist (get-value (:artist comic))
+     :author (get-value (:author comic))
+     :isbn13 (get-value (:isbn13 comic))
+     :isbn10 (get-value (:isbn10 comic))
+     :price (when-let [p (:price comic)]
+              (if (map? p)
+                (:value p)
+                p))
+     :image_url (get-value (:image_url comic))}))
 
 ;; DB 레코드를 도메인 객체로 변환
 (defn- db->comic [row]

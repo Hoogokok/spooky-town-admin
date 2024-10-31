@@ -4,7 +4,8 @@
             [hikari-cp.core :as hikari]
             [spooky-town-admin.core.result :as r]
             [spooky-town-admin.domain.comic.errors :as errors]
-            [migratus.core :as migratus]
+            [ragtime.jdbc :as ragtime-jdbc]
+            [ragtime.repl :as ragtime]
             [environ.core :refer [env]]
             [clojure.tools.logging :as log])
   (:import (com.zaxxer.hikari HikariDataSource)))
@@ -36,35 +37,20 @@
                          dbtype host port dbname user password)]
      (jdbc/get-datasource {:jdbcUrl jdbc-url}))))
 
-(defn create-migratus-config [datasource env]
-  {:store :database
-   :migration-dir (case env
-                   :test "db/migrations/test"
-                   :dev "db/migrations/dev"
-                   "db/migrations/productions")
-   :db {:connection-uri (format "jdbc:postgresql://%s:%d/%s?user=%s&password=%s"
-                              (or (env :postgres-host) "localhost")
-                              (or (env :postgres-port) 5432)
-                              (or (env :postgres-db) "postgres")
-                              (or (env :postgres-user) "postgres")
-                              (or (env :postgres-password) "postgres"))}})
+(defn create-ragtime-config [env db-spec]
+  {:datastore (ragtime-jdbc/sql-database db-spec)
+   :migrations (case env
+                :test (ragtime-jdbc/load-resources "db/migrations/test")
+                :dev (ragtime-jdbc/load-resources "db/migrations/dev")
+                (ragtime-jdbc/load-resources "db/migrations/production"))})
 
 (defn run-migrations! [{:keys [db env] :as config}]
   (try
     (log/info "Starting database migrations for environment:" env)
-    (let [ds (create-datasource db)
-          migration-config (create-migratus-config ds env)]
-      (log/debug "Running migrations with config:" migration-config)
-      (migratus/init migration-config)
-      (let [pending (migratus/pending-list migration-config)]
-        (if (seq pending)
-          (do
-            (log/info "Pending migrations:" pending)
-            (migratus/migrate migration-config)
-            (r/success {:migrated pending}))
-          (do
-            (log/info "No pending migrations")
-            (r/success {:migrated []})))))
+    (let [ragtime-config (create-ragtime-config env db)]
+      (log/debug "Running migrations with config:" ragtime-config)
+      (ragtime/migrate ragtime-config)
+      (r/success {:migrated true}))
     (catch Exception e
       (log/error e "Migration failed")
       (r/failure (errors/system-error 
@@ -75,9 +61,8 @@
 (defn rollback-migrations! [{:keys [db env]}]
   (try
     (log/info "Rolling back migrations for environment:" env)
-    (let [ds (create-datasource db)
-          migration-config (create-migratus-config ds env)]
-      (migratus/rollback migration-config)
+    (let [ragtime-config (create-ragtime-config env db)]
+      (ragtime/rollback ragtime-config)
       (r/success true))
     (catch Exception e
       (log/error e "Rollback failed")
@@ -91,7 +76,8 @@
     (let [ds (connection/->pool HikariDataSource db-spec)]
       (reset! datasource ds)
       (try
-        (run-migrations! {:db db-spec :env :dev})
+        (let [config (create-ragtime-config :dev db-spec)]
+          (ragtime/migrate config))
         (catch Exception e
           (log/error e "Failed to initialize database")
           (.printStackTrace e))))))

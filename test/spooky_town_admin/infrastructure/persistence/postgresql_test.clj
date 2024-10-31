@@ -8,7 +8,6 @@
             [spooky-town-admin.infrastructure.persistence.test-helper :refer [test-fixture *test-datasource*]]))
 
 (use-fixtures :each test-fixture)
-
 (def test-comic-data
   {:title (->Title "Test Comic")
    :artist (->Artist "Test Artist")
@@ -129,3 +128,4 @@
                               publisher-repo 
                               (get-in publisher-result [:value :id]))]
           (is (r/success? publisher-check)))))))
+
