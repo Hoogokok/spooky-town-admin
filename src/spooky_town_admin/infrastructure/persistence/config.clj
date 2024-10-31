@@ -36,19 +36,24 @@
                          dbtype host port dbname user password)]
      (jdbc/get-datasource {:jdbcUrl jdbc-url}))))
 
-(defn create-migratus-config [db-spec env]
+(defn create-migratus-config [datasource env]
   {:store :database
    :migration-dir (case env
-                   :test "db/migrations/test"      ;; 테스트용 마이그레이션
-                   :dev "db/migrations/dev"        ;; 개발 환경용
-                   "db/migrations/productions")    ;; 기본값 (운영)
-   :db db-spec})
+                   :test "db/migrations/test"
+                   :dev "db/migrations/dev"
+                   "db/migrations/productions")
+   :db {:connection-uri (format "jdbc:postgresql://%s:%d/%s?user=%s&password=%s"
+                              (or (env :postgres-host) "localhost")
+                              (or (env :postgres-port) 5432)
+                              (or (env :postgres-db) "postgres")
+                              (or (env :postgres-user) "postgres")
+                              (or (env :postgres-password) "postgres"))}})
 
 (defn run-migrations! [{:keys [db env] :as config}]
   (try
     (log/info "Starting database migrations for environment:" env)
     (let [ds (create-datasource db)
-          migration-config (create-migratus-config {:datasource ds} env)]
+          migration-config (create-migratus-config ds env)]
       (log/debug "Running migrations with config:" migration-config)
       (migratus/init migration-config)
       (let [pending (migratus/pending-list migration-config)]
@@ -71,7 +76,7 @@
   (try
     (log/info "Rolling back migrations for environment:" env)
     (let [ds (create-datasource db)
-          migration-config (create-migratus-config {:datasource ds} env)]
+          migration-config (create-migratus-config ds env)]
       (migratus/rollback migration-config)
       (r/success true))
     (catch Exception e
@@ -85,10 +90,10 @@
   (when-not @datasource
     (let [ds (connection/->pool HikariDataSource db-spec)]
       (reset! datasource ds)
-      ;; 마이그레이션 실행
       (try
         (run-migrations! {:db db-spec :env :dev})
         (catch Exception e
+          (log/error e "Failed to initialize database")
           (.printStackTrace e))))))
 
 (defn set-datasource! 
