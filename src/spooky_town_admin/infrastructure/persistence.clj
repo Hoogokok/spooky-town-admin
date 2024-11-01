@@ -19,6 +19,12 @@
     :prod (postgresql/create-publisher-repository)
     (postgresql/create-publisher-repository)))
 
+(defn create-author-repository []
+  (case (keyword (env :environment))
+    :test (in-memory/create-author-repository)
+    :prod (postgresql/create-author-repository)
+    (postgresql/create-author-repository)))
+
 ;; 프로토콜 메서드를 외부에서 호출할 수 있는 함수들
 (defn save-comic [repo comic]
   (protocol/save-comic repo comic))
@@ -53,3 +59,20 @@
 
 (defn associate-publisher-with-comic [repo comic-id publisher-id]
   (protocol/associate-publisher-with-comic repo comic-id publisher-id))
+
+
+;; Author 관련 함수들 추가
+(defn save-author [repo author]
+  (protocol/save-author repo author))
+
+(defn find-author-by-id [repo id]
+  (protocol/find-author-by-id repo id))
+
+(defn find-authors-by-name [repo name]
+  (protocol/find-authors-by-name repo name))
+
+(defn find-authors-by-comic-id [repo comic-id]
+  (protocol/find-authors-by-comic-id repo comic-id))
+
+(defn associate-author-with-comic [repo author-id comic-id role]
+  (protocol/associate-author-with-comic repo author-id comic-id role))
