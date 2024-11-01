@@ -1,11 +1,13 @@
 (ns spooky-town-admin.domain.comic.types-test
-  (:require [clojure.test :refer [deftest testing is use-fixtures]]
-            [spooky-town-admin.domain.comic.types :as types]
-            [spooky-town-admin.core.result :refer [success? value]] 
-            [spooky-town-admin.domain.comic.publisher :as publisher])
-  (:import [java.awt.image BufferedImage]
-           [javax.imageio ImageIO]
-           [java.io File ByteArrayInputStream ByteArrayOutputStream]))
+  (:require
+   [clojure.test :refer [deftest is testing]]
+   [spooky-town-admin.core.result :refer [success? value]]
+   [spooky-town-admin.domain.comic.publisher :as publisher]
+   [spooky-town-admin.domain.comic.types :as types])
+  (:import
+   [java.awt.image BufferedImage]
+   [java.io File]
+   [javax.imageio ImageIO]))
 
 ;; 테스트용 이미지 생성 헬퍼 함수
 (defn create-test-image [width height]
@@ -41,16 +43,28 @@
       (is (success? valid-result))
       (is (= "정상적인 제목" (str (:value valid-result))))
       (is (not (success? empty-title)))
-      (is (not (success? long-title)))))
+      (is (not (success? long-title))))) 
   
-  (testing "작가 생성"
-    (let [valid-result (types/create-author "홍길동")
-          empty-author (types/create-author "")
-          long-author (types/create-author (apply str (repeat 21 "a")))]
-      (is (success? valid-result))
-      (is (= "홍길동" (str (:value valid-result))))
-      (is (not (success? empty-author)))
-      (is (not (success? long-author)))))
+  (testing "작가/아티스트 생성"
+    (testing "문자열로 생성"
+      (let [valid-author (types/create-author "홍길동")
+            valid-artist (types/create-artist "김화가")]
+        (is (success? valid-author))
+        (is (success? valid-artist))
+        (is (= "홍길동" (get-in (value valid-author) [:name :value])))
+        (is (= "김화가" (get-in (value valid-artist) [:name :value])))
+        (is (= :writer (get-in (value valid-author) [:type])))
+        (is (= :artist (get-in (value valid-artist) [:type])))))
+    
+    (testing "맵으로 생성"
+      (let [valid-author (types/create-author {:name "홍길동" :description "베스트셀러 작가"})
+            valid-artist (types/create-artist {:name "김화가" :description "유명 일러스트레이터"})]
+        (is (success? valid-author))
+        (is (success? valid-artist))
+        (is (= "홍길동" (get-in (value valid-author) [:name :value])))
+        (is (= "김화가" (get-in (value valid-artist) [:name :value])))
+        (is (= "베스트셀러 작가" (get-in (value valid-author) [:description :value])))
+        (is (= "유명 일러스트레이터" (get-in (value valid-artist) [:description :value]))))))
   
   (testing "출판일 생성"
     (let [valid-result (types/create-publication-date "2024-03-20")

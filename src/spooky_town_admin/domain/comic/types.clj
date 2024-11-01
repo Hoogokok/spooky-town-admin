@@ -1,19 +1,19 @@
 (ns spooky-town-admin.domain.comic.types
   (:require
    [clojure.spec.alpha :as s]
-   [clojure.string :as string]
-   [clojure.tools.logging :as log]
    [spooky-town-admin.core.result :as r :refer [failure success]]
+   [spooky-town-admin.domain.comic.author :as author]
    [spooky-town-admin.domain.comic.errors :refer [business-error
-                                                  get-validation-message
                                                   get-business-message
+                                                  get-validation-message
                                                   validation-error]]
-   [spooky-town-admin.domain.comic.publisher :as publisher]
-   )
-  (:import [java.io File]
-           [java.nio.file Files Path]
-           [javax.imageio ImageIO]
-           [java.awt.image BufferedImage]))
+   [spooky-town-admin.domain.comic.publisher :as publisher])
+  (:import
+   [java.awt.image BufferedImage]
+   [java.io File]
+   [java.nio.file Files Path]
+   [javax.imageio ImageIO]
+   [spooky_town_admin.domain.comic.author ValidatedAuthor]))
 
 ;; --------- 유효성 검사 헬퍼 함수들 ---------
 (defn- calculate-isbn13-checksum [isbn]
@@ -46,8 +46,6 @@
          #(re-matches #"^\d{9}[\dX]$" %)))
 
 (s/def ::title-format (s/and string? #(<= 1 (count %) 100)))
-(s/def ::artist-format (s/and string? #(<= 1 (count %) 20)))
-(s/def ::author-format (s/and string? #(<= 1 (count %) 20)))
 (s/def ::publication-date-format #(re-matches #"^\d{4}-\d{2}-\d{2}$" %))
 (s/def ::price-format (s/and number? #(>= % 0)))
 (s/def ::page-count-format (s/and integer? pos?))
@@ -63,14 +61,6 @@
   (toString [_] value))
 
 (defrecord Title [value]
-  Object
-  (toString [_] value))
-
-(defrecord Artist [value]
-  Object
-  (toString [_] value))
-
-(defrecord Author [value]
   Object
   (toString [_] value))
 
@@ -120,15 +110,33 @@
     (success (->Title value))
     (failure (validation-error :title (get-validation-message :title)))))
 
-(defn create-artist [value]
-  (if (s/valid? ::artist-format value)
-    (success (->Artist value))
-    (failure (validation-error :artist (get-validation-message :artist)))))
+;; ValidatedComic 레코드 수정 - 타입 힌트 변경
+(defrecord ValidatedComic [^Title title 
+                          ^spooky_town_admin.domain.comic.author.ValidatedAuthor artist  
+                          ^spooky_town_admin.domain.comic.author.ValidatedAuthor author  
+                          ^ISBN13 isbn13 
+                          ^ISBN10 isbn10
+                          ^{:optional true} PublicationDate publication-date
+                          ^{:optional true} Object publisher
+                          ^{:optional true} Price price
+                          ^{:optional true} PageCount page-count
+                          ^{:optional true} Description description
+                          ^{:optional true} ImageMetadata cover-image-metadata])
 
-(defn create-author [value]
-  (if (s/valid? ::author-format value)
-    (success (->Author value))
-    (failure (validation-error :author (get-validation-message :author)))))
+;; 작가/아티스트 생성 함수 수정
+(defn create-artist [author-data]
+  (if (string? author-data)
+    (-> (author/create-validated-author {:name author-data :type :artist})
+        (r/map #(assoc % :role :artist)))
+    (-> (author/create-validated-author (assoc author-data :type :artist))
+        (r/map #(assoc % :role :artist)))))
+
+(defn create-author [author-data]
+  (if (string? author-data)
+    (-> (author/create-validated-author {:name author-data :type :writer})
+        (r/map #(assoc % :role :writer)))
+    (-> (author/create-validated-author (assoc author-data :type :writer))
+        (r/map #(assoc % :role :writer)))))
 
 (defn create-publication-date [value]
   (if (or (nil? value)
@@ -234,18 +242,33 @@
                             page-count description
                             cover-image])  ;; 추가: 원본 이미지 데이터
 
+;; ValidatedComic 레코드 수정 - 타입 힌트 변경
 (defrecord ValidatedComic [^Title title 
-                          ^Artist artist 
-                          ^Author author 
+                          ^ValidatedAuthor artist  
+                          ^ValidatedAuthor author  
                           ^ISBN13 isbn13 
                           ^ISBN10 isbn10
-                          ^{:optional true} PublicationDate publication-date  ;; 선택
-                          ^{:optional true} Object publisher  ;; 선택
-                          ^{:optional true} Price price  ;; 선택
-                          ^{:optional true} PageCount page-count  ;; 선택
-                          ^{:optional true} Description description  ;; 선택
-                          ^{:optional true} ImageMetadata cover-image-metadata])  ;; 선택
+                          ^{:optional true} PublicationDate publication-date
+                          ^{:optional true} Object publisher
+                          ^{:optional true} Price price
+                          ^{:optional true} PageCount page-count
+                          ^{:optional true} Description description
+                          ^{:optional true} ImageMetadata cover-image-metadata])
 
+;; 작가/아티스트 생성 함수 수정
+(defn create-artist [author-data]
+  (if (string? author-data)
+    (-> (author/create-validated-author {:name author-data :type :artist})
+        (r/map #(assoc % :role :artist)))
+    (-> (author/create-validated-author (assoc author-data :type :artist))
+        (r/map #(assoc % :role :artist)))))
+
+(defn create-author [author-data]
+  (if (string? author-data)
+    (-> (author/create-validated-author {:name author-data :type :writer})
+        (r/map #(assoc % :role :writer)))
+    (-> (author/create-validated-author (assoc author-data :type :writer))
+        (r/map #(assoc % :role :writer)))))
 (defrecord PersistedComic [id validated-comic cover-image-url])
 
 ;; --------- 도메인 이벤트 ---------
