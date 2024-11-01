@@ -1,16 +1,19 @@
 (ns spooky-town-admin.infrastructure.persistence.postgresql
-  (:require 
+  (:require
    [clojure.tools.logging :as log]
    [honey.sql :as sql]
    [next.jdbc :as jdbc]
    [next.jdbc.result-set :as rs]
    [spooky-town-admin.core.result :as r]
+   [spooky-town-admin.domain.comic.author :as author]
    [spooky-town-admin.domain.comic.errors :as errors]
    [spooky-town-admin.domain.comic.publisher :as publisher]
-   [spooky-town-admin.domain.comic.types :refer [->Title ->Artist ->Author 
-                                                 ->ISBN13 ->ISBN10 ->Price ->PublicationDate ->PageCount ->Description]]
+   [spooky-town-admin.domain.comic.types :refer [->Description ->ISBN10
+                                                 ->ISBN13 ->PageCount ->Price
+                                                 ->PublicationDate ->Title]]
    [spooky-town-admin.infrastructure.persistence.config :as config]
-   [spooky-town-admin.infrastructure.persistence.protocol :refer [ComicRepository
+   [spooky-town-admin.infrastructure.persistence.protocol :refer [AuthorRepository
+                                                                  ComicRepository
                                                                   PublisherRepository]]
    [spooky-town-admin.infrastructure.persistence.transaction :as transaction]))
 
@@ -24,8 +27,8 @@
                       (string? field) field
                       :else (str field)))]
     {:title (get-value (:title comic))
-     :artist (get-value (:artist comic))
-     :author (get-value (:author comic))
+     :artist (author/get-name (:artist comic))  ;; 작가 도메인 객체에서 이름 추출
+     :author (author/get-name (:author comic))  ;; 작가 도메인 객체에서 이름 추출
      :isbn13 (get-value (:isbn13 comic))
      :isbn10 (get-value (:isbn10 comic))
      :price (when-let [p (:price comic)]
@@ -44,11 +47,18 @@
       (:title row) 
       (assoc :title (->Title (:title row)))
       
-      (:artist row) 
-      (assoc :artist (->Artist (:artist row)))
+       (:artist row)
+      (assoc :artist (author/->ValidatedAuthor 
+                     (author/->AuthorName (:artist row))
+                     :artist
+                     nil))
       
-      (:author row) 
-      (assoc :author (->Author (:author row)))
+      (:author row)
+      (assoc :author (author/->ValidatedAuthor 
+                     (author/->AuthorName (:author row))
+                     :writer
+                     nil))
+      
       
       (:isbn13 row) 
       (assoc :isbn13 (->ISBN13 (:isbn13 row)))
@@ -326,6 +336,114 @@
                    (errors/get-system-message :db-error)
                    (.getMessage e)))))))
 
+(defn- author->db [author]
+  (when author
+    {:name (if (record? (:name author))
+             (get-in author [:name :value])
+             (:name author))
+     :type (name (:type author))
+     :description (when-let [desc (:description author)]
+                   (if (record? desc)
+                     (get-in desc [:value])
+                     desc))}))
+
+(defn- db->author [row]
+  (when row
+    (author/->PersistedAuthor (:id row)
+                             (:name row)
+                             (keyword (:type row))
+                             (:description row))))
+
+(defrecord PostgresqlAuthorRepository [datasource]
+  AuthorRepository
+
+  (save-author [_ author]
+    (try
+      (let [tx (transaction/get-current-tx)
+            db-author (author->db author)
+            query {:insert-into :authors
+                  :values [db-author]
+                  :returning [:*]}
+            result (jdbc/execute-one! tx
+                                    (sql/format query)
+                                    {:builder-fn rs/as-unqualified-maps})]
+        (r/success (db->author result)))
+      (catch Exception e
+        (log/error e "Failed to save author:" author)
+        (r/failure (errors/system-error
+                   :db-error
+                   (errors/get-system-message :db-error)
+                   (.getMessage e))))))
+  
+  (find-author-by-id [_ id]
+    (try
+      (let [tx (transaction/get-current-tx)
+            query {:select :*
+                  :from :authors
+                  :where [:= :id id]}
+            result (jdbc/execute-one! tx
+                                    (sql/format query)
+                                    {:builder-fn rs/as-unqualified-maps})]
+        (if result
+          (r/success (db->author result))
+          (r/failure (errors/business-error
+                     :not-found
+                     (errors/get-business-message :not-found)))))
+      (catch Exception e
+        (r/failure (errors/system-error
+                   :db-error
+                   (errors/get-system-message :db-error)
+                   (.getMessage e))))))
+  
+    (find-authors-by-name [_ name]
+    (try
+      (let [tx (transaction/get-current-tx)
+            query {:select :*
+                  :from :authors
+                  :where [:ilike :name (str "%" name "%")]}
+            result (jdbc/execute! tx
+                                (sql/format query)
+                                {:builder-fn rs/as-unqualified-maps})]
+        (r/success (map db->author result)))
+      (catch Exception e
+        (r/failure (errors/system-error
+                   :db-error
+                   (errors/get-system-message :db-error)
+                   (.getMessage e))))))
+    
+      (find-authors-by-comic-id [_ comic-id]
+    (try
+      (let [tx (transaction/get-current-tx)
+            query {:select [:a.* :ca.role]
+                  :from [[:authors :a]]
+                  :join [[:comic_authors :ca] [:= :a.id :ca.author_id]]
+                  :where [:= :ca.comic_id comic-id]}
+            result (jdbc/execute! tx
+                                (sql/format query)
+                                {:builder-fn rs/as-unqualified-maps})]
+        (r/success (map #(assoc (db->author %) :role (keyword (:role %))) result)))
+      (catch Exception e
+        (r/failure (errors/system-error
+                   :db-error
+                   (errors/get-system-message :db-error)
+                   (.getMessage e))))))
+      
+  (associate-author-with-comic [_ author-id comic-id role]
+    (try
+      (let [tx (transaction/get-current-tx)
+            query {:insert-into :comic_authors
+                  :values [{:comic_id comic-id
+                           :author_id author-id
+                           :role (name role)}]}
+            _ (jdbc/execute-one! tx (sql/format query))]
+        (r/success true))
+      (catch Exception e
+        (r/failure (errors/system-error
+                    :db-error
+                    (errors/get-system-message :db-error)
+                    (.getMessage e))))))
+  )
+
 (defn create-repository []
   (if-let [ds (config/get-datasource)]  ;; get-datasource 함수 사용
     (->PostgresqlComicRepository ds)
@@ -335,5 +453,11 @@
 (defn create-publisher-repository []
   (if-let [ds (config/get-datasource)]
     (->PostgresqlPublisherRepository ds)
+    (throw (ex-info "데이터소스가 초기화되지 않았습니다."
+                   {:type :db-error}))))
+
+(defn create-author-repository []
+  (if-let [ds (config/get-datasource)]
+    (->PostgresqlAuthorRepository ds)
     (throw (ex-info "데이터소스가 초기화되지 않았습니다."
                    {:type :db-error}))))
